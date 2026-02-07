@@ -3,7 +3,11 @@
   "version": "0.0.0",
   "private": true,
   "exports": {
-    "./*": "./src/*.tsx"
+    "./globals.css": "./src/styles/globals.css",
+    "./postcss.config": "./postcss.config.mjs",
+    "./lib/*": "./src/lib/*.ts",
+    "./components/*": "./src/components/*.tsx",
+    "./hooks/*": "./src/hooks/*.tsx"
   },
   "scripts": {
     "lint": "eslint .",
@@ -11,6 +15,7 @@
     "check-types": "tsc --noEmit"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.18",
     "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",
     "@types/node": "^22.15.3",
@@ -20,6 +25,7 @@
     "typescript": "5.9.2"
   },
   "dependencies": {
+    "postcss-load-config": "^6.0.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   }
