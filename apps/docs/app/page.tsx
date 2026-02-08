@@ -1,5 +1,6 @@
 import { Button } from "@repo/ui/components/button"
 import Image, { type ImageProps } from "next/image"
+import { env } from "../env"
 
 import styles from "./page.module.css"
 
@@ -20,6 +21,12 @@ const ThemeImage = (props: Props) => {
 }
 
 export default function Home() {
+  console.log("Environment variables:", {
+    NODE_ENV: env.NODE_ENV,
+    NEXT_PUBLIC_APP_URL: env.NEXT_PUBLIC_APP_URL,
+    DATABASE_URL: env.DATABASE_URL
+  })
+
   return (
     <div className={styles.page}>
       <main className={styles.main}>

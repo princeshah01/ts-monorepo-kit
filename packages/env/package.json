@@ -1,0 +1,26 @@
+{
+  "name": "@repo/env",
+  "version": "0.0.0",
+  "private": true,
+  "exports": {
+    "./node": "./src/node.ts",
+    "./react": "./src/react.ts",
+    "./next": "./src/next.ts",
+    "./schema": "./src/schema/index.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "check-types": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "workspace:*",
+    "@repo/typescript-config": "workspace:*",
+    "@types/node": "^22.15.3",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@t3-oss/env-core": "^0.13.10",
+    "@t3-oss/env-nextjs": "^0.13.10",
+    "zod": "^4.3.6"
+  }
+}
