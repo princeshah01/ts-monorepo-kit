@@ -89,7 +89,12 @@ export const baseConfig = [
     }
   },
   {
-    files: ["eslint.config.js", "eslint.config.mjs"],
+    files: [
+      "**/*.config.js",
+      "**/*.config.mjs",
+      "postcss.config.mjs",
+      "tailwind.config.*"
+    ],
     rules: {
       "import/no-default-export": "off"
     }

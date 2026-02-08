@@ -1,7 +1,7 @@
 import { Button } from "@repo/ui/components/button"
 import Image, { type ImageProps } from "next/image"
-import { env } from "../env"
 
+import { env } from "../env"
 import styles from "./page.module.css"
 
 type Props = Omit<ImageProps, "src"> & {

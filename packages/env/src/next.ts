@@ -13,6 +13,7 @@ export function createNextEnv<
     server: opts.server,
     client: opts.client,
     runtimeEnv: {
+      // eslint-disable-next-line no-restricted-properties
       ...process.env
     }
   }) as Infer<TServer> & Infer<TClient>

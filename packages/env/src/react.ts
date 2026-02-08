@@ -16,6 +16,7 @@ export function createReactEnv<
     client: opts.client,
     server: opts.server ?? ({} as TServer),
     clientPrefix: "VITE_",
+    // eslint-disable-next-line no-restricted-properties
     runtimeEnv: process.env,
     emptyStringAsUndefined: true
   }) as Infer<TClient> & Infer<TServer>

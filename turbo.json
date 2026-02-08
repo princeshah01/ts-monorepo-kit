@@ -12,7 +12,7 @@
       "dependsOn": ["^prepare"]
     },
     "lint": { "dependsOn": ["prepare"] },
-    "format": { "dependsOn": ["prepare"] },
+    "lint:fix": { "dependsOn": ["prepare"] },
     "check-types": { "dependsOn": ["prepare"] },
     "dev": {
       "cache": false,

@@ -10,6 +10,7 @@ export function createNodeEnv<TServer extends Record<string, z.ZodTypeAny>>(
 ): Infer<TServer> {
   return createEnv({
     server,
+    // eslint-disable-next-line no-restricted-properties
     runtimeEnv: process.env,
     emptyStringAsUndefined: true
   }) as Infer<TServer>
