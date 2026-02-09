@@ -135,7 +135,7 @@ importers:
         specifier: 5.9.2
         version: 5.9.2
 
-  packages/redis-cache:
+  packages/redis:
     dependencies:
       ioredis:
         specifier: ^5.9.2

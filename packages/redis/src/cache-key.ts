@@ -32,3 +32,21 @@ export function buildCacheKey(req: KeySource): string {
 
   return `${method}:${path}?${qs}`
 }
+
+export function invalidateCacheKeys(req: KeySource) {
+  const keys = []
+  const method = req.method.toUpperCase()
+
+  if (["PATCH", "PUT", "DELETE"].includes(method)) {
+    const key = buildCacheKey(req)
+    keys.push(key)
+  }
+
+  // TODO make this more generic later
+
+  if (["POST", "PATCH", "PUT", "DELETE"].includes(method)) {
+    keys.push(`${method}:/users:list:*`)
+  }
+
+  return keys
+}
