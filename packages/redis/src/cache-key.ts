@@ -1,52 +1,76 @@
-// ---------------------------------------------------------------------------
-// Deterministic cache-key generator.
-//
-// Produces a stable, human-readable key from an HTTP request so that
-// identical requests always map to the same cache entry — even if query
-// params arrive in a different order.
-//
-// Usage:
-//   import { buildCacheKey } from "@repo/redis"
-//   const key = buildCacheKey(req)          // e.g. "GET:/users?page=1&sort=name"
-//   const full = redis.key("users", key)    // e.g. "web:users:GET:/users?page=1&sort=name"
-// ---------------------------------------------------------------------------
+import crypto from "crypto"
 
-interface KeySource {
-  method: string
-  path: string
-  query?: Record<string, unknown>
+function stableStringify(obj: Record<string, unknown>): string {
+  return JSON.stringify(
+    Object.keys(obj)
+      .sort()
+      .reduce(
+        (acc, key) => {
+          acc[key] = obj[key]
+          return acc
+        },
+        {} as Record<string, unknown>
+      )
+  )
 }
 
-/** Build a deterministic cache key from an HTTP request. */
-export function buildCacheKey(req: KeySource): string {
-  const method = req.method.toUpperCase()
-  const path = req.path
-
-  // Sort query params alphabetically so ?b=2&a=1 === ?a=1&b=2
-  const query = req.query ?? {}
-  const sortedKeys = Object.keys(query).sort()
-
-  if (sortedKeys.length === 0) return `${method}:${path}`
-
-  const qs = sortedKeys.map(k => `${k}=${String(query[k])}`).join("&")
-
-  return `${method}:${path}?${qs}`
+function hash(input: string): string {
+  // SHA-256 preferred, SHA-1 acceptable for cache keys
+  return crypto.createHash("sha256").update(input).digest("hex")
 }
 
-export function invalidateCacheKeys(req: KeySource) {
-  const keys = []
-  const method = req.method.toUpperCase()
+type ResourceCacheInit = {
+  resource: string
+  redis: {
+    cacheKey: (...parts: string[]) => string
+  }
+  ttl: {
+    byId: number
+    list: number
+  }
+}
 
-  if (["PATCH", "PUT", "DELETE"].includes(method)) {
-    const key = buildCacheKey(req)
-    keys.push(key)
+type InvalidateByIdResult = {
+  exact: string
+  listPattern: string
+}
+
+export class ResourceCacheKeyBuilder {
+  private resource: string
+  private redis: ResourceCacheInit["redis"]
+  private ttl: ResourceCacheInit["ttl"]
+
+  constructor(init: ResourceCacheInit) {
+    this.resource = init.resource
+    this.redis = init.redis
+    this.ttl = init.ttl
   }
 
-  // TODO make this more generic later
-
-  if (["POST", "PATCH", "PUT", "DELETE"].includes(method)) {
-    keys.push(`${method}:/users:list:*`)
+  cacheKeyById(id: string): string {
+    return this.redis.cacheKey(this.resource, "id", id)
   }
 
-  return keys
+  cacheKeyForList(query?: Record<string, unknown>): string {
+    const qHash = hash(stableStringify(query ?? {}))
+    return this.redis.cacheKey(this.resource, "list", qHash)
+  }
+
+  invalidateById(id: string): InvalidateByIdResult {
+    return {
+      exact: this.redis.cacheKey(this.resource, "id", id),
+      listPattern: this.redis.cacheKey(this.resource, "list", "*")
+    }
+  }
+
+  invalidateAll(): string {
+    return this.redis.cacheKey(this.resource, "*")
+  }
+
+  ttlById(): number {
+    return this.ttl.byId
+  }
+
+  ttlForList(): number {
+    return this.ttl.list
+  }
 }

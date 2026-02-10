@@ -7,7 +7,7 @@ export { LocalSingleFlight, DistributedSingleFlight } from "./single-flight.js"
 
 // Utilities
 export { serialize, deserialize } from "./serializer.js"
-export { buildCacheKey } from "./cache-key.js"
+export {} from "./cache-key.js"
 
 // Middleware
 export { cacheMiddleware, invalidateMiddleware } from "./middleware.js"

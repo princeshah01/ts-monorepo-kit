@@ -125,6 +125,10 @@ export class RedisClient {
   async invalidate(key: string): Promise<void> {
     await this.client.del(key)
   }
+  async invalidateMany(...keys: string[]): Promise<void> {
+    if (keys.length === 0) return
+    await this.client.del(...keys)
+  }
 
   async invalidateByPattern(
     pattern: string,
