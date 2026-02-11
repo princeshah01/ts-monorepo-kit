@@ -1,0 +1,26 @@
+{
+  "name": "@repo/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node --import tsx src/index.ts",
+    "lint": "eslint .",
+    "lint:fix": "eslint --fix .",
+    "check-types": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "workspace:*",
+    "@repo/typescript-config": "workspace:*",
+    "@types/node": "^22.15.3",
+    "tsx": "^4.19.4",
+    "typescript": "5.9.2"
+  },
+  "dependencies": {
+    "@repo/env": "workspace:*",
+    "@repo/logger": "workspace:*",
+    "@repo/queue": "workspace:*",
+    "@repo/redis": "workspace:*"
+  }
+}
