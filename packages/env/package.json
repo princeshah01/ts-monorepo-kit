@@ -2,6 +2,7 @@
   "name": "@repo/env",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "exports": {
     "./node": "./src/node.ts",
     "./react": "./src/react.ts",
@@ -9,6 +10,7 @@
     "./schema": "./src/schema/index.ts"
   },
   "scripts": {
+    "build": "tsc",
     "lint": "eslint .",
     "lint:fix": "eslint --fix .",
     "check-types": "tsc --noEmit"
