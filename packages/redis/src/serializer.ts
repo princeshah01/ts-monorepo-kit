@@ -5,9 +5,12 @@
  *
  */
 export function serialize<T>(value: T): string {
-  return JSON.stringify(value)
+  return JSON.stringify(value ?? null)
 }
 
-export function deserialize<T>(raw: string): T {
+export function deserialize<T>(raw: string): T | null {
+  if (raw === null) {
+    return null
+  }
   return JSON.parse(raw) as T
 }

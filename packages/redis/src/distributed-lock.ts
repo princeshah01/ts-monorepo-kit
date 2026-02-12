@@ -43,18 +43,15 @@ export class DistributedLock {
     return result === "OK"
   }
 
-  /** Release the lock — but only if we still own it. */
   async release(): Promise<boolean> {
-    // Read the current token stored at the lock key
-    const current = await this.client.get(this.lockKey)
-
-    // Only delete if the token matches (we are the owner)
-    if (current === this.token) {
-      await this.client.del(this.lockKey)
-      return true
-    }
-
-    // Someone else owns the lock (or it already expired) — nothing to do
-    return false
+    const script = `
+      if redis.call("get", KEYS[1]) == ARGV[1] then
+        return redis.call("del", KEYS[1])
+      else
+        return 0
+      end
+    `
+    const result = await this.client.eval(script, 1, this.lockKey, this.token)
+    return Number(result) === 1
   }
 }

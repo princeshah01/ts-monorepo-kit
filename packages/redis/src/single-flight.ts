@@ -14,7 +14,7 @@ import type { LockOptions } from "./types.js"
 export class LocalSingleFlight {
   private readonly flights = new Map<string, Promise<unknown>>()
 
-  async do<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  async do<T>(key: string, fn: () => Promise<T | null>): Promise<T | null> {
     const existing = this.flights.get(key)
     if (existing) return existing as Promise<T>
 
@@ -54,8 +54,8 @@ export class LocalSingleFlight {
  *
  */
 const DEFAULT_LOCK_TTL = 10 // seconds
-const DEFAULT_WAIT_TIMEOUT = 8_000 // ms
-const DEFAULT_RETRY_INTERVAL = 100 // ms
+const DEFAULT_WAIT_TIMEOUT = (DEFAULT_LOCK_TTL + 2) * 1_000 //ms (lock TTL + buffer)
+const DEFAULT_RETRY_INTERVAL = 1_00 // ms
 
 export class DistributedSingleFlight {
   private readonly client: Redis
@@ -81,7 +81,7 @@ export class DistributedSingleFlight {
     ttl: number,
     fetcher: () => T | Promise<T>,
     lockOpts?: LockOptions
-  ): Promise<T> {
+  ): Promise<T | null> {
     // ── Step 1: cache hit — fastest path ──
     const cached = await this.client.get(cacheKey)
     if (cached !== null) return deserialize<T>(cached)
@@ -101,7 +101,7 @@ export class DistributedSingleFlight {
     ttl: number,
     fetcher: () => T | Promise<T>,
     lockOpts?: LockOptions
-  ): Promise<T> {
+  ): Promise<T | null> {
     const lockTTL = lockOpts?.lockTTL ?? DEFAULT_LOCK_TTL
     const waitTimeout = lockOpts?.waitTimeout ?? DEFAULT_WAIT_TIMEOUT
     const retryInterval = lockOpts?.retryInterval ?? DEFAULT_RETRY_INTERVAL
@@ -137,7 +137,7 @@ export class DistributedSingleFlight {
     cacheKey: string,
     timeout: number,
     interval: number
-  ): Promise<T> {
+  ): Promise<T | null> {
     const deadline = Date.now() + timeout
 
     while (Date.now() < deadline) {
