@@ -1,19 +1,3 @@
-// ---------------------------------------------------------------------------
-// Worker process entry point.
-//
-// This file bootstraps the entire worker:
-//   1. Validates environment variables (fail-fast).
-//   2. Creates a single RedisClient instance.
-//   3. Creates QueueService (for health checks / metrics).
-//   4. Creates WorkerService with the handler registry.
-//   5. Starts the health-check HTTP server.
-//   6. Registers graceful shutdown hooks.
-//
-// Run with:
-//   pnpm --filter @repo/worker dev      (watch mode)
-//   pnpm --filter @repo/worker start    (production)
-// ---------------------------------------------------------------------------
-
 import { Logger } from "@repo/logger"
 import { RedisClient } from "@repo/redis"
 import { QueueService, WorkerService } from "@repo/queue"
@@ -27,11 +11,9 @@ async function main(): Promise<void> {
 
   logger.info("Booting worker process…")
 
-  // ── 1. Redis ──────────────────────────────────────────────────────
-
   const redis = new RedisClient({
     url: env.REDIS_URL,
-    namespace: "worker"
+    namespace: "queue"
   })
 
   const pong = await redis.ping()
@@ -41,27 +23,21 @@ async function main(): Promise<void> {
   }
   logger.info("Redis connected ✓")
 
-  // ── 2. QueueService (needed for health/metrics endpoints) ─────────
-
   const queueService = QueueService.create({
     redis,
     logger,
-    queueName: "default",
+    queueName: env.REDIS_QUEUE_NAME,
     redisDbIndex: env.REDIS_QUEUE_DB
   })
-
-  // ── 3. WorkerService ──────────────────────────────────────────────
 
   const workerService = new WorkerService({
     redis,
     handlers,
     logger,
-    queueName: "default",
+    queueName: env.REDIS_QUEUE_NAME,
     concurrency: env.WORKER_CONCURRENCY,
     redisDbIndex: env.REDIS_QUEUE_DB
   })
-
-  // ── 4. Health-check server ────────────────────────────────────────
 
   createHealthServer({
     port: env.WORKER_HEALTH_PORT,
@@ -69,8 +45,6 @@ async function main(): Promise<void> {
     worker: workerService,
     logger
   })
-
-  // ── 5. Graceful shutdown ──────────────────────────────────────────
 
   registerGracefulShutdown({ worker: workerService, redis, logger })
 

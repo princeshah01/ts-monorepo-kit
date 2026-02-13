@@ -1,19 +1,7 @@
-// ---------------------------------------------------------------------------
-// QueueService — BullMQ adapter implementing the IQueueService port.
-//
-// Architectural decisions:
-//   • Singleton per queue-name per process — prevents duplicate Queue
-//     instances that would leak Redis connections.
-//   • Accepts an existing RedisClient — never creates its own connections.
-//   • Exposes a strongly-typed `enqueue` method that maps JobType → payload.
-//   • Default retry strategy: 5 attempts, exponential backoff starting at 2s.
-//   • All BullMQ imports are confined to this file + worker-service.ts;
-//     nothing else in the monorepo touches BullMQ directly.
-// ---------------------------------------------------------------------------
-
-import { Queue } from "bullmq"
-import type { RedisClient } from "@repo/redis"
 import type { Logger } from "@repo/logger"
+import type { RedisClient } from "@repo/redis"
+import { Queue } from "bullmq"
+
 import type {
   IQueueService,
   QueueServiceOptions,
@@ -23,42 +11,27 @@ import type {
   QueueMetrics
 } from "./types.js"
 
-// ── Singleton registry ───────────────────────────────────────────────────────
-// One QueueService instance per queue name prevents connection leaks when
-// callers inadvertently construct multiple instances.
-
 const instances = new Map<string, QueueService>()
 
-// ── Default job options ──────────────────────────────────────────────────────
-
 const DEFAULT_ATTEMPTS = 5
-const DEFAULT_BACKOFF_DELAY = 2_000 // ms – first retry after 2 s
+const DEFAULT_BACKOFF_DELAY = 2_000
 const DEFAULT_REMOVE_ON_COMPLETE = true
 const DEFAULT_REMOVE_ON_FAIL = false
 const DEFAULT_QUEUE_NAME = "default"
-
-// ---------------------------------------------------------------------------
-// QueueService
-// ---------------------------------------------------------------------------
 
 export class QueueService implements IQueueService {
   private readonly queue: Queue
   private readonly logger: Logger
   private readonly queueName: string
+  private readonly dbIndex?: number
 
-  // ── Factory (singleton) ──────────────────────────────────────────────
+  // Factory (singleton)
 
-  /**
-   * Obtain the singleton `QueueService` for a given queue name.
-   *
-   * If an instance already exists for that name it is returned as-is.
-   * This guarantees exactly one BullMQ `Queue` object per queue name per
-   * process, regardless of how many modules call `QueueService.create()`.
-   */
   static create(options: QueueServiceOptions): QueueService {
     const name = options.queueName ?? DEFAULT_QUEUE_NAME
+    const instanceKey = QueueService.instanceKey(name, options.redisDbIndex)
 
-    const existing = instances.get(name)
+    const existing = instances.get(instanceKey)
     if (existing) {
       options.logger.info(
         `Returning existing QueueService singleton for queue "${name}"`
@@ -67,21 +40,19 @@ export class QueueService implements IQueueService {
     }
 
     const instance = new QueueService(options)
-    instances.set(name, instance)
+    instances.set(instanceKey, instance)
     return instance
   }
 
-  // ── Private constructor — forces callers through `.create()` ───────
+  // Private constructor
 
   private constructor(options: QueueServiceOptions) {
     const { redis, logger, queueName, redisDbIndex } = options
 
     this.queueName = queueName ?? DEFAULT_QUEUE_NAME
     this.logger = logger
+    this.dbIndex = redisDbIndex
 
-    // Derive an ioredis-compatible connection from the caller's RedisClient.
-    // BullMQ accepts an existing ioredis instance via the `connection` option,
-    // so we never open extra connections.
     const connection = this.buildConnection(redis, redisDbIndex)
 
     this.queue = new Queue(this.queueName, {
@@ -100,7 +71,7 @@ export class QueueService implements IQueueService {
     this.logger.info(`QueueService initialised for queue "${this.queueName}"`)
   }
 
-  // ── Enqueue ────────────────────────────────────────────────────────
+  // Enqueue a job with a strongly-typed payload.
 
   async enqueue<T extends keyof JobPayloadMap>(
     jobType: T,
@@ -124,11 +95,10 @@ export class QueueService implements IQueueService {
       `Enqueued job "${jobType}" with id "${job.id}" on queue "${this.queueName}"`
     )
 
-    // `job.id` is guaranteed by BullMQ to be a non-null string at this point.
     return job.id!
   }
 
-  // ── Bulk enqueue ───────────────────────────────────────────────────
+  // Enqueue multiple jobs of the same type atomically.
 
   async enqueueBulk<T extends keyof JobPayloadMap>(
     jobType: T,
@@ -161,7 +131,7 @@ export class QueueService implements IQueueService {
     return jobs.map(j => j.id!)
   }
 
-  // ── Queue controls ─────────────────────────────────────────────────
+  // Queue controls
 
   async pause(): Promise<void> {
     await this.queue.pause()
@@ -175,11 +145,11 @@ export class QueueService implements IQueueService {
 
   async close(): Promise<void> {
     await this.queue.close()
-    instances.delete(this.queueName)
+    instances.delete(QueueService.instanceKey(this.queueName, this.dbIndex))
     this.logger.info(`Queue "${this.queueName}" closed`)
   }
 
-  // ── Health check ───────────────────────────────────────────────────
+  // Health check
 
   async healthCheck(): Promise<QueueHealthStatus> {
     try {
@@ -215,7 +185,7 @@ export class QueueService implements IQueueService {
     }
   }
 
-  // ── Metrics ────────────────────────────────────────────────────────
+  // Metrics
 
   async getMetrics(sampleWindowMs = 60_000): Promise<QueueMetrics> {
     const end = Date.now()
@@ -247,26 +217,20 @@ export class QueueService implements IQueueService {
     }
   }
 
-  // ── Internals ──────────────────────────────────────────────────────
-
-  /**
-   * Build a connection object for BullMQ from the caller's RedisClient.
-   *
-   * If a separate `redisDbIndex` is requested we duplicate the underlying
-   * ioredis instance and SELECT the target DB.  Otherwise we hand off the
-   * existing connection directly — zero new TCP sockets.
-   */
   private buildConnection(redis: RedisClient, dbIndex?: number) {
     const baseConnection = redis.client
 
     if (dbIndex !== undefined) {
-      // `.duplicate()` creates a new ioredis instance that shares the same
-      // connection options but allows us to SELECT a different DB without
-      // affecting the caller's original connection.
-      const dup = baseConnection.duplicate({ db: dbIndex })
-      return dup
+      return baseConnection.duplicate({
+        db: dbIndex,
+        maxRetriesPerRequest: null
+      })
     }
 
-    return baseConnection
+    return baseConnection.duplicate({ maxRetriesPerRequest: null })
+  }
+
+  private static instanceKey(queueName: string, dbIndex?: number): string {
+    return `${queueName}:${dbIndex ?? "default"}`
   }
 }

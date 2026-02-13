@@ -1,11 +1,3 @@
-// ---------------------------------------------------------------------------
-// Example handler: report.generate
-//
-// Generates a report based on the specified type and parameters.
-// In production, this would query databases, build PDFs/CSVs, and upload
-// results to object storage (S3, GCS, etc.).
-// ---------------------------------------------------------------------------
-
 import type { JobHandler } from "@repo/queue"
 
 export const generateReportHandler: JobHandler<"report.generate"> = async (

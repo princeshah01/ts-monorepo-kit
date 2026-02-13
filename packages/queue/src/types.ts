@@ -1,29 +1,6 @@
-// ---------------------------------------------------------------------------
-// Type definitions for the queue package.
-//
-// Architectural note: All types are defined in a single file to serve as the
-// "contract" layer.  Business logic depends ONLY on these interfaces, never
-// on BullMQ types directly.  This makes swapping the underlying engine
-// (SQS, Kafka, etc.) a matter of re-implementing the interfaces without
-// touching any consumer code.
-// ---------------------------------------------------------------------------
-
 import type { Logger } from "@repo/logger"
 import type { RedisClient } from "@repo/redis"
 
-// ---------------------------------------------------------------------------
-// Job registry — the single source of truth for every job the system handles.
-//
-// To add a new job:
-//   1. Add an entry to the `JobPayloadMap` interface.
-//   2. Add a matching value to the `JobType` enum.
-//   3. Create a handler in `apps/worker/src/handlers/`.
-// ---------------------------------------------------------------------------
-
-/**
- * Map every `JobType` to its strongly-typed payload.
- * Extend this interface whenever you introduce a new background job.
- */
 export interface JobPayloadMap {
   "email.send": {
     to: string
@@ -54,11 +31,6 @@ export interface JobPayloadMap {
   }
 }
 
-/**
- * Enum that mirrors the keys of `JobPayloadMap`.
- * Using an enum (rather than raw strings) gives us auto-complete, rename
- * support, and exhaustiveness checking in switch statements.
- */
 export enum JobType {
   EMAIL_SEND = "email.send",
   EMAIL_SEND_BULK = "email.send-bulk",
@@ -67,152 +39,108 @@ export enum JobType {
   REPORT_GENERATE = "report.generate"
 }
 
-// ---------------------------------------------------------------------------
-// Enqueue options
-// ---------------------------------------------------------------------------
-
 export interface EnqueueOptions {
-  /** Delay before the job becomes available (milliseconds). */
+  // Delay in ms before the job becomes eligible for processing (default: 0).
   delay?: number
-  /** Lower number = higher priority (1 is highest). */
+  // Job priority (lower number = higher priority, default: 5).
   priority?: number
-  /** Override default retry attempts (default: 5). */
+  // Override default retry attempts (default: 5).
   attempts?: number
-  /** Override default backoff type/delay. */
+  // Override default backoff type/delay.
   backoff?: {
     type: "exponential" | "fixed"
     delay: number
   }
-  /** Optional deduplication key — BullMQ uses this as the job ID. */
+  // Optional deduplication key — BullMQ uses this as the job ID.
   deduplicationId?: string
-  /** Whether to remove the job on completion (default: true). */
+  // Whether to remove the job on completion (default: true).
   removeOnComplete?: boolean
-  /** Whether to remove the job on failure (default: false). */
+  // Whether to remove the job on failure (default: false).
   removeOnFail?: boolean
 }
 
-// ---------------------------------------------------------------------------
-// Queue service interface (port in clean-architecture terms)
-// ---------------------------------------------------------------------------
-
-/**
- * Abstract queue port.
- *
- * Any adapter (BullMQ, SQS, Kafka) must implement this interface.
- * API services depend ONLY on `IQueueService`, never on BullMQ directly.
- */
 export interface IQueueService {
-  /**
-   * Enqueue a job with a strongly-typed payload.
-   *
-   * @example
-   * ```ts
-   * await queue.enqueue(JobType.EMAIL_SEND, {
-   *   to: "user@example.com",
-   *   subject: "Welcome!",
-   *   body: "<h1>Hello</h1>",
-   * })
-   * ```
-   */
+  // Enqueue a job with a strongly-typed payload.
   enqueue<T extends keyof JobPayloadMap>(
     jobType: T,
     payload: JobPayloadMap[T],
     options?: EnqueueOptions
   ): Promise<string>
 
-  /** Enqueue multiple jobs of the same type atomically. */
+  // Enqueue multiple jobs of the same type atomically.
   enqueueBulk<T extends keyof JobPayloadMap>(
     jobType: T,
     items: Array<{ payload: JobPayloadMap[T]; options?: EnqueueOptions }>
   ): Promise<string[]>
 
-  /** Pause the queue (stops workers from picking up new jobs). */
+  // Pause the queue (stops workers from picking up new jobs).
   pause(): Promise<void>
 
-  /** Resume a paused queue. */
+  // Resume a paused queue.
   resume(): Promise<void>
 
-  /** Gracefully close the queue connection. */
+  // Gracefully close the queue connection.
   close(): Promise<void>
 }
 
-// ---------------------------------------------------------------------------
-// Worker types
-// ---------------------------------------------------------------------------
-
-/** Context injected into every job handler. */
 export interface JobContext {
-  /** Unique job ID assigned by the queue engine. */
+  // Unique job ID assigned by BullMQ (or "unknown" if not available).
   jobId: string
-  /** Number of attempts made so far (1-based). */
+  // Number of attempts made so far (1-based).
   attemptsMade: number
-  /** Logger scoped to this job. */
+  // Logger scoped to this job.
   logger: Logger
 }
 
-/**
- * A job handler function.  Each `JobType` maps to exactly one handler.
- * Handlers are pure functions: receive payload + context, return void.
- */
 export type JobHandler<T extends keyof JobPayloadMap> = (
   payload: JobPayloadMap[T],
   context: JobContext
 ) => Promise<void>
 
-/**
- * Registry mapping every known job type to its handler.
- * The worker uses this at bootstrap to wire up processors.
- */
+// Complete handler registry.
+//
+// Every key is a `JobType` value and every value is the handler function
+// that processes that job.  Type-safety is enforced: the handler's payload
+// parameter is inferred from `JobPayloadMap[K]`.
 export type JobHandlerRegistry = {
-  [K in keyof JobPayloadMap]?: JobHandler<K>
+  [K in keyof JobPayloadMap]: JobHandler<K>
 }
-
-// ---------------------------------------------------------------------------
-// Worker service options
-// ---------------------------------------------------------------------------
-
 export interface WorkerServiceOptions {
-  /** Existing RedisClient to reuse the connection. */
+  // Redis client instance (required).
   redis: RedisClient
-  /** Handler registry — one handler per job type. */
+  // Handler registry — one handler per job type.
   handlers: JobHandlerRegistry
-  /** Logger instance. */
+  // Logger instance.
   logger: Logger
-  /** Queue name (default: "default"). */
+  // Queue name (default: "default").
   queueName?: string
-  /** Number of concurrent jobs to process (default: 5). */
+  // Number of concurrent jobs to process (default: 5).
   concurrency?: number
-  /** Optional separate Redis DB index for queue isolation. */
+  // Optional separate Redis DB index for queue isolation.
   redisDbIndex?: number
-  /** Stalled-job check interval in ms (default: 30_000). */
+  // Stalled-job check interval in ms (default: 30_000).
   stalledInterval?: number
-  /** Max stalled count before marking a job as failed (default: 2). */
+  // Max stalled count before marking a job as failed (default: 2).
   maxStalledCount?: number
-  /** Rate limiter config — max jobs per duration window. */
+  // Rate limiter config — max jobs per duration window.
   rateLimiter?: {
     max: number
     duration: number
   }
+  // Retain dead-letter entries for this many ms (default: 7 days).
+  dlqRetentionMs?: number
 }
-
-// ---------------------------------------------------------------------------
-// Queue service options
-// ---------------------------------------------------------------------------
 
 export interface QueueServiceOptions {
-  /** Existing RedisClient to reuse the connection. */
+  // Redis client instance (required).
   redis: RedisClient
-  /** Logger instance. */
+  // Logger instance.
   logger: Logger
-  /** Queue name (default: "default"). */
+  // Queue name (default: "default").
   queueName?: string
-  /** Optional separate Redis DB index for queue isolation. */
+  // Optional separate Redis DB index for queue isolation.
   redisDbIndex?: number
 }
-
-// ---------------------------------------------------------------------------
-// Health & Metrics
-// ---------------------------------------------------------------------------
 
 export interface QueueHealthStatus {
   connected: boolean
@@ -229,20 +157,17 @@ export interface QueueHealthStatus {
 
 export interface QueueMetrics {
   queueName: string
-  /** Jobs completed in the last `sampleWindow` ms. */
+  // Total count of jobs currently in the queue (waiting + active + delayed).
   completedCount: number
-  /** Jobs failed in the last `sampleWindow` ms. */
+  // Total count of failed jobs in the queue.
   failedCount: number
-  /** Approximate throughput (jobs/sec) over the sample window. */
+  // Approximate throughput (jobs/sec) over the sample window.
   throughput: number
-  /** Timestamp when metrics were collected. */
+  // Timestamp when metrics were collected.
   collectedAt: string
 }
 
-// ---------------------------------------------------------------------------
-// Dead-letter queue
-// ---------------------------------------------------------------------------
-
+/** DEAD-LETTER QUEUE ENTRY **/
 export interface DeadLetterEntry {
   jobId: string
   jobType: string

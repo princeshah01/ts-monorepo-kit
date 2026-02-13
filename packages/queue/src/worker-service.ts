@@ -1,33 +1,21 @@
-// ---------------------------------------------------------------------------
-// WorkerService — BullMQ Worker adapter.
-//
-// Architectural decisions:
-//   • Lives in the same **package** as QueueService so it can share types,
-//     but it is only **imported** inside `apps/worker`.  API services never
-//     import this module.
-//   • Accepts a `JobHandlerRegistry` — a plain map of JobType → handler.
-//     Each handler is a pure async function that receives (payload, context).
-//   • Logs every lifecycle event (active, completed, failed, stalled) via
-//     the injected Logger, making observability a first-class citizen.
-//   • Supports graceful shutdown: calling `close()` lets in-flight jobs
-//     finish before the process exits.
-// ---------------------------------------------------------------------------
-
-import { Worker, type Job } from "bullmq"
-import type { RedisClient } from "@repo/redis"
 import { Logger } from "@repo/logger"
+import type { RedisClient } from "@repo/redis"
+import { Worker, type Job } from "bullmq"
+
+import { DeadLetterService } from "./dead-letter.js"
 import type {
   WorkerServiceOptions,
   JobPayloadMap,
   JobHandlerRegistry,
   JobContext
 } from "./types.js"
-import { DeadLetterService } from "./dead-letter.js"
 
 const DEFAULT_QUEUE_NAME = "default"
 const DEFAULT_CONCURRENCY = 5
+const DEFAULT_ATTEMPTS = 5
 const DEFAULT_STALLED_INTERVAL = 30_000
 const DEFAULT_MAX_STALLED_COUNT = 2
+const DEFAULT_DLQ_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
 
 export class WorkerService {
   private readonly worker: Worker
@@ -46,7 +34,8 @@ export class WorkerService {
       redisDbIndex,
       stalledInterval = DEFAULT_STALLED_INTERVAL,
       maxStalledCount = DEFAULT_MAX_STALLED_COUNT,
-      rateLimiter
+      rateLimiter,
+      dlqRetentionMs = DEFAULT_DLQ_RETENTION_MS
     } = options
 
     this.queueName = queueName
@@ -54,7 +43,12 @@ export class WorkerService {
     this.handlers = handlers
 
     // Dead-letter service shares the same Redis connection.
-    this.deadLetter = new DeadLetterService(redis, logger, queueName)
+    this.deadLetter = new DeadLetterService(
+      redis,
+      logger,
+      queueName,
+      dlqRetentionMs
+    )
 
     // Build connection the same way QueueService does.
     const connection = this.buildConnection(redis, redisDbIndex)
@@ -91,10 +85,7 @@ export class WorkerService {
       )
 
       // If the job has exhausted all retries, move it to the dead-letter queue.
-      if (
-        job &&
-        job.attemptsMade >= (job.opts.attempts ?? DEFAULT_CONCURRENCY)
-      ) {
+      if (job && job.attemptsMade >= (job.opts.attempts ?? DEFAULT_ATTEMPTS)) {
         void this.deadLetter.add({
           jobId: jobId,
           jobType: jobName,
@@ -124,20 +115,15 @@ export class WorkerService {
 
   // ── Job processor ──────────────────────────────────────────────────
 
-  /**
-   * Route an incoming job to the correct handler from the registry.
-   *
-   * If no handler is registered for the job type, the job is rejected with a
-   * clear error so it shows up in failed-job lists and metrics.
-   */
   private async processJob(job: Job): Promise<void> {
     const jobType = job.name as keyof JobPayloadMap
     const handler = this.handlers[jobType]
 
     if (!handler) {
       throw new Error(
-        `No handler registered for job type "${job.name}". ` +
-          `Register a handler in your JobHandlerRegistry.`
+        'No handler registered for job type "' +
+          String(job.name) +
+          '". Register a handler in your JobHandlerRegistry.'
       )
     }
 
@@ -151,8 +137,6 @@ export class WorkerService {
       `[Worker] Processing job: type="${job.name}" id="${job.id}" attempt=${String(job.attemptsMade + 1)}`
     )
 
-    // Cast is safe because the registry enforces the JobType → Payload mapping
-    // at compile time.  At runtime the data must match the registered type.
     await (handler as (payload: unknown, ctx: JobContext) => Promise<void>)(
       job.data,
       context
@@ -161,15 +145,6 @@ export class WorkerService {
 
   // ── Graceful shutdown ──────────────────────────────────────────────
 
-  /**
-   * Gracefully shut down the worker.
-   *
-   * 1. Stops picking up new jobs.
-   * 2. Waits for in-flight jobs to finish (up to BullMQ's internal timeout).
-   * 3. Closes the Redis connection.
-   *
-   * Call this from your process signal handlers (SIGTERM / SIGINT).
-   */
   async close(): Promise<void> {
     this.logger.info(
       `[Worker] Shutting down worker on queue "${this.queueName}"…`
@@ -190,11 +165,11 @@ export class WorkerService {
     const baseConnection = redis.client
 
     if (dbIndex !== undefined) {
-      return baseConnection.duplicate({ db: dbIndex })
+      return baseConnection.duplicate({
+        db: dbIndex,
+        maxRetriesPerRequest: null
+      })
     }
-
-    // BullMQ workers require `maxRetriesPerRequest: null` on the ioredis
-    // connection.  Duplicate to avoid mutating the caller's client.
     return baseConnection.duplicate({ maxRetriesPerRequest: null })
   }
 }

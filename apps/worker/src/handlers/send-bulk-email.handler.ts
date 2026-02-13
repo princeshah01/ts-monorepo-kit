@@ -1,10 +1,3 @@
-// ---------------------------------------------------------------------------
-// Example handler: email.send-bulk
-//
-// Processes bulk email sending jobs by iterating over recipient lists.
-// In production, this would batch API calls to your email provider.
-// ---------------------------------------------------------------------------
-
 import type { JobHandler } from "@repo/queue"
 
 export const sendBulkEmailHandler: JobHandler<"email.send-bulk"> = async (

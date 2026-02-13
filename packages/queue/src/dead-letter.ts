@@ -1,21 +1,8 @@
-// ---------------------------------------------------------------------------
-// Dead-letter queue (DLQ) pattern.
-//
-// When a job exhausts all retry attempts the WorkerService pushes a
-// structured record into a Redis sorted set keyed by failure timestamp.
-// This lets ops teams inspect, replay, or purge failed jobs without
-// coupling to BullMQ's internal data model.
-//
-// Why a sorted set?
-//   • O(log N) insert.
-//   • Range queries by timestamp ("show all failures in the last hour").
-//   • Easy ZRANGEBYSCORE for dashboards or replay scripts.
-// ---------------------------------------------------------------------------
-
-import type { RedisClient } from "@repo/redis"
 import type { Logger } from "@repo/logger"
+import type { RedisClient } from "@repo/redis"
+import { deserialize, serialize } from "@repo/redis"
+
 import type { DeadLetterEntry } from "./types.js"
-import { serialize, deserialize } from "@repo/redis"
 
 const DLQ_KEY_PREFIX = "dlq"
 
@@ -23,14 +10,19 @@ export class DeadLetterService {
   private readonly redis: RedisClient
   private readonly logger: Logger
   private readonly dlqKey: string
+  private readonly retentionMs?: number
 
-  constructor(redis: RedisClient, logger: Logger, queueName: string) {
+  constructor(
+    redis: RedisClient,
+    logger: Logger,
+    queueName: string,
+    retentionMs?: number
+  ) {
     this.redis = redis
     this.logger = logger
     this.dlqKey = `${DLQ_KEY_PREFIX}:${queueName}`
+    this.retentionMs = retentionMs
   }
-
-  // ── Write ──────────────────────────────────────────────────────────
 
   async add(entry: DeadLetterEntry): Promise<void> {
     const score = Date.now()
@@ -38,12 +30,14 @@ export class DeadLetterService {
 
     await this.redis.client.zadd(this.dlqKey, score, member)
 
+    if (this.retentionMs && this.retentionMs > 0) {
+      await this.purge(this.retentionMs)
+    }
+
     this.logger.warn(
       `[DLQ] Job "${entry.jobType}" (id=${entry.jobId}) moved to dead-letter queue. Reason: ${entry.failedReason}`
     )
   }
-
-  // ── Read ───────────────────────────────────────────────────────────
 
   /**
    * Retrieve dead-letter entries within a time window.
@@ -66,30 +60,30 @@ export class DeadLetterService {
       limit
     )
 
-    return raw.map(r => deserialize<DeadLetterEntry>(r))
+    return raw
+      .map(r => deserialize<DeadLetterEntry>(r))
+      .filter((entry): entry is DeadLetterEntry => entry !== null)
   }
 
-  /** Count of entries currently in the DLQ. */
+  // Count DLQ entries
   async count(): Promise<number> {
     return this.redis.client.zcard(this.dlqKey)
   }
 
-  // ── Maintenance ────────────────────────────────────────────────────
-
-  /** Remove a specific entry by its serialised member value. */
+  // Remove a specific entry from the DLQ. Returns true if removed, false if not found.
   async remove(entry: DeadLetterEntry): Promise<boolean> {
     const member = serialize(entry)
     const removed = await this.redis.client.zrem(this.dlqKey, member)
     return removed > 0
   }
 
-  /** Purge entries older than `olderThanMs` milliseconds. */
+  // Purge entries older than the specified age (in ms). Returns number of entries removed.
   async purge(olderThanMs: number): Promise<number> {
     const cutoff = Date.now() - olderThanMs
     return this.redis.client.zremrangebyscore(this.dlqKey, "-inf", cutoff)
   }
 
-  /** Wipe the entire DLQ (use with caution). */
+  // Wipe the entire DLQ (use with caution).
   async clear(): Promise<void> {
     await this.redis.client.del(this.dlqKey)
     this.logger.warn(`[DLQ] Dead-letter queue "${this.dlqKey}" cleared`)
