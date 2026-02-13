@@ -1,16 +1,17 @@
-/*
- * Centralized JSON serializer / deserializer.
- * Every part of the Redis package passes through these two functions.
- * If you ever need to swap to msgpack or add a reviver, change it here once.
- *
- */
+// Serializer utilities for Redis values
 export function serialize<T>(value: T): string {
   return JSON.stringify(value ?? null)
 }
+
+// Deserialize a Redis value, returning null if the value is not valid JSON or is null
 
 export function deserialize<T>(raw: string): T | null {
   if (raw === null) {
     return null
   }
-  return JSON.parse(raw) as T
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    return null
+  }
 }

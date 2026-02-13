@@ -1,4 +1,4 @@
-import crypto from "crypto"
+import crypto from "node:crypto"
 
 function stableStringify(obj: Record<string, unknown>): string {
   return JSON.stringify(
@@ -19,58 +19,41 @@ function hash(input: string): string {
   return crypto.createHash("sha256").update(input).digest("hex")
 }
 
-type ResourceCacheInit = {
-  resource: string
-  redis: {
-    cacheKey: (...parts: string[]) => string
-  }
-  ttl: {
-    byId: number
-    list: number
-  }
-}
-
-type InvalidateByIdResult = {
-  exact: string
-  listPattern: string
+interface ResourceCacheKeyBuilderProps {
+  namespace: string
+  cacheKeyPrefix: string
 }
 
 export class ResourceCacheKeyBuilder {
-  private resource: string
-  private redis: ResourceCacheInit["redis"]
-  private ttl: ResourceCacheInit["ttl"]
+  private readonly ns: string
+  private readonly cacheKeyPrefix: string
 
-  constructor(init: ResourceCacheInit) {
-    this.resource = init.resource
-    this.redis = init.redis
-    this.ttl = init.ttl
+  constructor(props: ResourceCacheKeyBuilderProps) {
+    this.ns = props.namespace
+    this.cacheKeyPrefix = props.cacheKeyPrefix
+  }
+  cacheKeyById(resource: string, id: string): string {
+    return `${this.ns}:${this.cacheKeyPrefix}:${resource}:id:${id}`
   }
 
-  cacheKeyById(id: string): string {
-    return this.redis.cacheKey(this.resource, "id", id)
-  }
-
-  cacheKeyForList(query?: Record<string, unknown>): string {
+  cacheKeyForList(resource: string, query?: Record<string, unknown>): string {
     const qHash = hash(stableStringify(query ?? {}))
-    return this.redis.cacheKey(this.resource, "list", qHash)
+    return `${this.ns}:${this.cacheKeyPrefix}:${resource}:list:${qHash}`
   }
-
-  invalidateById(id: string): InvalidateByIdResult {
+  invalidateById(
+    resource: string,
+    id: string
+  ): { exact: string; listPattern: string } {
     return {
-      exact: this.redis.cacheKey(this.resource, "id", id),
-      listPattern: this.redis.cacheKey(this.resource, "list", "*")
+      exact: `${this.ns}:${this.cacheKeyPrefix}:${resource}:id:${id}`,
+      listPattern: `${this.ns}:${this.cacheKeyPrefix}:${resource}:list:*`
     }
   }
-
-  invalidateAll(): string {
-    return this.redis.cacheKey(this.resource, "*")
-  }
-
-  ttlById(): number {
-    return this.ttl.byId
-  }
-
-  ttlForList(): number {
-    return this.ttl.list
+  invalidateAll(resource?: string): string {
+    const basePattern = `${this.ns}:${this.cacheKeyPrefix}:`
+    if (resource) {
+      return `${basePattern}${resource}:*`
+    }
+    return `${basePattern}*`
   }
 }

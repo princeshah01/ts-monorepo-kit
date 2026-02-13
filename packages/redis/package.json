@@ -17,10 +17,12 @@
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",
+    "@types/express": "^5.0.6",
     "@types/node": "^22.15.3",
     "typescript": "5.9.2"
   },
   "dependencies": {
+    "@repo/logger": "workspace:*",
     "ioredis": "^5.9.2"
   }
 }
