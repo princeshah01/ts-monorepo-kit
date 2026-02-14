@@ -1,111 +1,205 @@
 # @repo/redis
 
-Shared Redis utilities for this monorepo.
+Shared Redis client for this monorepo. Wraps `ioredis` with logging, cache helpers, and namespace-safe invalidation.
 
 ## What this package provides
 
-- `RedisClient`: typed wrapper over `ioredis` with logging, caching helpers, and namespace-safe invalidation.
-- `ResourceCacheKeyBuilder`: deterministic cache key builder for IDs and list queries.
-- `SingleFlight`: deduplicates concurrent `getOrSet` calls for the same key.
-- `serialize` / `deserialize`: JSON helpers for Redis values.
+| Export                      | Description                                               |
+| --------------------------- | --------------------------------------------------------- |
+| `RedisClient`               | Typed wrapper over `ioredis` with caching methods         |
+| `ResourceCacheKeyBuilder`   | Deterministic cache key builder for IDs and list queries  |
+| `SingleFlight`              | Deduplicates concurrent `getOrSet` calls for the same key |
+| `serialize` / `deserialize` | JSON helpers for Redis values                             |
 
-## Environment
+## Setup
 
-Set these in your service/app environment:
+### 1. Install
 
-```env
-REDIS_URL=redis://localhost:6379
-REDIS_NAMESPACE=auth-service
+Already included in the monorepo. Add to your app's `package.json`:
+
+```json
+{
+  "dependencies": {
+    "@repo/redis": "workspace:*"
+  }
+}
 ```
 
-- `REDIS_URL` is required.
-- `REDIS_NAMESPACE` is required and should be unique per service.
+Then run `pnpm install` from the repo root.
 
-## Basic setup
+### 2. Create a Redis client
+
+Typically done once at app startup:
 
 ```ts
 import { RedisClient } from "@repo/redis"
+import { Logger } from "@repo/logger"
 
-export const redis = new RedisClient({
-  url: process.env.REDIS_URL!,
-  namespace: process.env.REDIS_NAMESPACE!,
-  cacheKeyPrefix: "cache"
-})
+const logger = new Logger("AuthService")
+
+export const redis = new RedisClient(
+  {
+    url: process.env.REDIS_URL!,
+    namespace: "auth-service", // required — isolates keys per service
+    cacheKeyPrefix: "cache" // optional, defaults to "cache"
+  },
+  logger
+)
 ```
+
+## Using inside a controller
+
+Here's a real-world example of using Redis for caching in a controller / route handler:
+
+### Cache-aside pattern (`getOrSet`)
+
+```ts
+import { redis } from "../redis.js"
+
+async function getUserById(userId: string) {
+  const key = redis.keyBuilder.cacheKeyById("users", userId)
+
+  const user = await redis.getOrSet(key, {
+    ttl: 300, // cache for 5 minutes
+    fetchTimeoutMs: 2000, // abort fetch after 2s
+    fetcher: async () => {
+      // This runs ONLY on cache miss
+      const row = await db.user.findUnique({ where: { id: userId } })
+      return row ?? null
+    }
+  })
+
+  return user
+}
+```
+
+**What happens:**
+
+1. Checks Redis for the cached value.
+2. On cache hit → returns immediately (no DB call).
+3. On cache miss → runs `fetcher`, caches the result, returns it.
+4. Concurrent calls for the same key are coalesced (single-flight).
+
+### Manual get/set
+
+```ts
+async function getProduct(id: string) {
+  const key = redis.keyBuilder.cacheKeyById("products", id)
+
+  // Try cache first
+  const cached = await redis.get<Product>(key)
+  if (cached) return cached
+
+  // Fetch from DB
+  const product = await db.product.findUnique({ where: { id } })
+
+  // Cache it
+  if (product) {
+    await redis.set(key, product, { ttl: 600 })
+  }
+
+  return product
+}
+```
+
+### Invalidation after mutation
+
+```ts
+async function updateUser(userId: string, data: UpdateUserDto) {
+  await db.user.update({ where: { id: userId }, data })
+
+  // Invalidate the specific user cache + all list caches for users
+  const keys = redis.keyBuilder.invalidateById("users", userId)
+  await redis.invalidate(keys.exact)
+  await redis.invalidateByPattern(keys.listPattern)
+}
+```
+
+### List caching with query keys
+
+```ts
+async function listUsers(query: { page: number; role: string }) {
+  const key = redis.keyBuilder.cacheKeyForList("users", query)
+
+  return redis.getOrSet(key, {
+    ttl: 120,
+    fetcher: async () => {
+      return db.user.findMany({
+        where: { role: query.role },
+        skip: (query.page - 1) * 20,
+        take: 20
+      })
+    }
+  })
+}
+```
+
+> The key builder hashes the query object deterministically, so `{ page: 1, role: "admin" }`
+> and `{ role: "admin", page: 1 }` produce the same cache key.
 
 ## Key building
 
 ```ts
-const userByIdKey = redis.keyBuilder.cacheKeyById("users", "user_123")
-const userListKey = redis.keyBuilder.cacheKeyForList("users", {
+// Single resource by ID
+const key = redis.keyBuilder.cacheKeyById("users", "user_123")
+// → "auth-service:cache:users:id:user_123"
+
+// List with query params
+const key = redis.keyBuilder.cacheKeyForList("users", {
   page: 1,
   role: "admin"
 })
+// → "auth-service:cache:users:list:<sha256-hash>"
+
+// Invalidation helpers
+const inv = redis.keyBuilder.invalidateById("users", "user_123")
+// → { exact: "auth-service:cache:users:id:user_123", listPattern: "auth-service:cache:users:list:*" }
+
+// Invalidate all keys for a resource
+const pattern = redis.keyBuilder.invalidateAll("users")
+// → "auth-service:cache:users:*"
+
+// Invalidate everything in this namespace
+const pattern = redis.keyBuilder.invalidateAll()
+// → "auth-service:cache:*"
 ```
 
-Use `cacheKeyForList` for query-based keys (sorting/hashing is deterministic).
-
-## Read/write cache
+## All invalidation methods
 
 ```ts
-await redis.set(userByIdKey, { id: "user_123", name: "Prince" }, { ttl: 300 })
+// Exact key
+await redis.invalidate(key)
 
-const user = await redis.get<{ id: string; name: string }>(userByIdKey)
-```
-
-## Cache-aside (`getOrSet`)
-
-```ts
-const key = redis.keyBuilder.cacheKeyById("users", "user_123")
-
-const user = await redis.getOrSet(key, {
-  ttl: 300,
-  fetchTimeoutMs: 2000,
-  fetcher: async () => {
-    const row = await db.user.findUnique({ where: { id: "user_123" } })
-    return row ?? null
-  }
-})
-```
-
-Notes:
-
-- Calls for the same key are coalesced while fetch is in-flight.
-- If fetcher times out or throws, `null` is returned.
-
-## Invalidation patterns
-
-```ts
-// exact key
-await redis.invalidate(redis.keyBuilder.cacheKeyById("users", "user_123"))
-
-// multiple keys
+// Multiple exact keys
 await redis.invalidateMany("k1", "k2", "k3")
 
-// exact + list pattern for one id
-const userInvalidation = redis.keyBuilder.invalidateById("users", "user_123")
-await redis.invalidate(userInvalidation.exact)
-await redis.invalidateByPattern(userInvalidation.listPattern)
+// Pattern (must be within your namespace)
+await redis.invalidateByPattern("auth-service:cache:users:list:*")
 
-// all keys for one resource
-await redis.invalidateByPattern(redis.keyBuilder.invalidateAll("users"))
-
-// all keys in current namespace + prefix
+// All keys in your namespace + prefix
 await redis.invalidateNamespace()
 ```
 
-`invalidateByPattern` rejects patterns outside your configured namespace to prevent accidental global deletes.
+> `invalidateByPattern` rejects patterns outside your configured namespace to prevent accidental global deletes.
 
-## Health + lifecycle
+## Health & lifecycle
 
 ```ts
 const ok = await redis.ping() // true when Redis responds with PONG
 
-// on service shutdown
+// On app shutdown
 await redis.disconnect()
 ```
 
-## API surface
+## Environment
+
+```env
+REDIS_URL=redis://localhost:6379
+```
+
+The `namespace` is set in code (usually per-service), not via env.
+
+## Types
 
 ```ts
 import type {
@@ -116,9 +210,7 @@ import type {
 } from "@repo/redis"
 ```
 
-## Validate this package
-
-From repo root:
+## Validation
 
 ```bash
 pnpm --filter @repo/redis lint

@@ -1,58 +1,93 @@
-# @repo/worker
+# Worker
 
-Background job processor for the monorepo. Consumes BullMQ jobs and processes them with registered handlers.
+Background job processor. Picks up jobs from the BullMQ queue and runs your handlers.
 
-## Environment
-
-Copy the example and fill in values:
+## Setup
 
 ```bash
-cp .env.example .env
+cp apps/worker/.env.example apps/worker/.env
 ```
 
-See [.env.example](.env.example) for all variables.
+### Environment variables
+
+| Variable             | Type          | Default | Description             |
+| -------------------- | ------------- | ------- | ----------------------- |
+| `REDIS_URL`          | URL           | —       | Redis connection string |
+| `QUEUE_NAME`         | string        | —       | Queue name to listen on |
+| `WORKER_CONCURRENCY` | number (1–50) | —       | Max parallel jobs       |
+
+## Run
+
+```bash
+pnpm --filter @repo/worker dev
+```
 
 ## How it works
 
-1. Boots a single `RedisClient` with namespace `queue`.
-2. Creates a `QueueService` singleton (used for health checks and metrics).
-3. Creates a `WorkerService` with the strict handler registry.
-4. Starts a lightweight HTTP health-check server.
-5. Registers graceful shutdown hooks (SIGTERM, SIGINT).
+1. Connects to Redis
+2. Creates a `QueueService` (for enqueuing from this process if needed)
+3. Creates a `WorkerService` with your handler map
+4. Listens for jobs and dispatches them to the matching handler
+5. Handles graceful shutdown on `SIGTERM` / `SIGINT`
 
-## Handler registry
+## Adding a new job handler
 
-All handlers live in `src/handlers/`. The registry in `src/handlers/index.ts` maps every `JobType` to its handler. This is a **strict** mapping — missing handlers are a compile-time error.
+### Step 1 — Define the job type
 
-### Current handlers
+Open `packages/queue/src/types.ts` and add to `JobPayloadMap`:
 
-| Job type          | Handler file                 | Description                    |
-| ----------------- | ---------------------------- | ------------------------------ |
-| `email.send`      | `send-email.handler.ts`      | Send a single email            |
-| `email.send-bulk` | `send-bulk-email.handler.ts` | Send bulk emails               |
-| `payment.process` | `process-payment.handler.ts` | Process a payment (idempotent) |
-| `user.onboard`    | `user-onboard.handler.ts`    | Post-signup onboarding flow    |
-| `report.generate` | `generate-report.handler.ts` | Generate and upload a report   |
+```ts
+export interface JobPayloadMap {
+  "email.send": { to: string; subject: string; body: string }
+  "bulk.email.send": { to: string; subject: string; body: string }[]
+  // ↓ add your new type here
+  "report.generate": { reportId: string; format: "pdf" | "csv" }
+}
+```
 
-### Adding a new handler
+### Step 2 — Add the handler
 
-1. Add payload to `JobPayloadMap` in `packages/queue/src/types.ts`.
-2. Add enum entry to `JobType`.
-3. Create `src/handlers/your-handler.handler.ts`.
-4. Wire it in `src/handlers/index.ts`.
+Open `apps/worker/src/handlers/index.ts`:
 
-## Health endpoints
+```ts
+import type { JobHandlerMap } from "@repo/queue"
 
-| Endpoint       | Description                                    |
-| -------------- | ---------------------------------------------- |
-| `GET /health`  | Worker + queue connectivity and job counts     |
-| `GET /metrics` | Throughput, completed/failed counts (last 60s) |
+export const handlers: JobHandlerMap = {
+  "email.send": async (payload, logger) => {
+    logger.info(`Sending email to="${payload.to}"`)
+    // ... your logic
+  },
+
+  "bulk.email.send": async (payload, logger) => {
+    logger.info(`Sending ${payload.length} emails`)
+    // ... your logic
+  },
+
+  // ↓ add your new handler here
+  "report.generate": async (payload, logger) => {
+    logger.info(`Generating ${payload.format} report ${payload.reportId}`)
+    // ... your logic
+  }
+}
+```
+
+### Step 3 — Enqueue from any app
+
+```ts
+await queue.addJob("report.generate", {
+  reportId: "rpt_123",
+  format: "pdf"
+})
+```
+
+> **TypeScript will enforce** that every job in `JobPayloadMap` has a handler, and that
+> the payload you pass to `addJob` matches the type definition.
 
 ## Scripts
 
 ```bash
-pnpm --filter @repo/worker dev          # watch mode
-pnpm --filter @repo/worker build        # compile
+pnpm --filter @repo/worker dev          # start in dev mode (with tsx watch)
+pnpm --filter @repo/worker build        # compile TypeScript
 pnpm --filter @repo/worker lint         # lint
 pnpm --filter @repo/worker check-types  # type-check
 ```

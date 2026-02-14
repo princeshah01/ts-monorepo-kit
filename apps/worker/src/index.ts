@@ -1,16 +1,16 @@
 import { Logger } from "@repo/logger"
-import { RedisClient } from "@repo/redis"
 import { QueueService, WorkerService } from "@repo/queue"
+import { RedisClient } from "@repo/redis"
+
 import { env } from "./env.js"
 import { handlers } from "./handlers/index.js"
-import { registerGracefulShutdown } from "./shutdown.js"
-import { createHealthServer } from "./health-server.js"
 
 async function main(): Promise<void> {
   const logger = new Logger("Worker")
 
-  logger.info("Booting worker process…")
+  logger.info("Starting worker")
 
+  // Connect to Redis
   const redis = new RedisClient({
     url: env.REDIS_URL,
     namespace: "queue"
@@ -18,40 +18,44 @@ async function main(): Promise<void> {
 
   const pong = await redis.ping()
   if (!pong) {
-    logger.error("Failed to connect to Redis — aborting.")
+    logger.error("Could not connect to Redis - exiting.")
     process.exit(1)
   }
   logger.info("Redis connected ✓")
 
-  const queueService = QueueService.create({
+  // Create queue (for enqueuing from this process if needed)
+  const queue = new QueueService({
     redis,
     logger,
-    queueName: env.REDIS_QUEUE_NAME,
-    redisDbIndex: env.REDIS_QUEUE_DB
+    queueName: env.QUEUE_NAME
   })
 
-  const workerService = new WorkerService({
+  // Start worker (picks up jobs and runs handlers)
+  const worker = new WorkerService({
     redis,
+    logger,
     handlers,
-    logger,
-    queueName: env.REDIS_QUEUE_NAME,
-    concurrency: env.WORKER_CONCURRENCY,
-    redisDbIndex: env.REDIS_QUEUE_DB
+    queueName: env.QUEUE_NAME,
+    concurrency: env.WORKER_CONCURRENCY
   })
 
-  createHealthServer({
-    port: env.WORKER_HEALTH_PORT,
-    queue: queueService,
-    worker: workerService,
-    logger
-  })
+  // Graceful shutdown
+  const shutdown = async (signal: string): Promise<void> => {
+    logger.info(`${signal} received - shutting down`)
+    await worker.close()
+    await queue.close()
+    await redis.disconnect()
+    logger.info("Shutdown complete")
+    process.exit(0)
+  }
 
-  registerGracefulShutdown({ worker: workerService, redis, logger })
+  process.on("SIGTERM", () => void shutdown("SIGTERM"))
+  process.on("SIGINT", () => void shutdown("SIGINT"))
 
-  logger.info("Worker is ready and processing jobs ✓")
+  logger.info("Worker is ready")
 }
 
 main().catch(err => {
-  console.error("Fatal error during worker bootstrap:", err)
+  console.error("Fatal error:", err)
   process.exit(1)
 })

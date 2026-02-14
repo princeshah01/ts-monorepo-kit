@@ -1,130 +1,159 @@
 # @repo/queue
 
-Minimal, scalable queue setup for jobs and workers in a monorepo.
+Simple job queue for your monorepo. Uses BullMQ + Redis under the hood.
 
-## Design
+## How it works
 
-- Uses BullMQ for job queueing and processing.
-- Queue uses an injected RedisClient instance created by the caller.
-- Recommended isolation: same Redis server, separate DB index for queue traffic.
-- Jobs are registered by name and type-safe payload.
-- Workers are separate processes or modules, each consuming a specific job type.
+1. **QueueService** — adds jobs to the queue from any app (API, script, etc.)
+2. **WorkerService** — picks up jobs and runs your handler functions.
+
+Both connect to the same Redis instance and the same queue name.
+
+## Setup
+
+### 1. Install
+
+Already included in the monorepo. Add to your app's `package.json`:
+
+```json
+{
+  "dependencies": {
+    "@repo/queue": "workspace:*",
+    "@repo/redis": "workspace:*"
+  }
+}
+```
+
+Then run `pnpm install` from the repo root.
+
+### 2. Define job types
+
+Open `packages/queue/src/types.ts` and add your job to `JobPayloadMap`:
+
+```ts
+export interface JobPayloadMap {
+  "email.send": { to: string; subject: string; body: string }
+  "bulk.email.send": { to: string; subject: string; body: string }[]
+  // ↓ add new job types here
+  "user.onboard": { userId: string; plan: string }
+}
+```
+
+This gives you strict typing everywhere — both when enqueuing and when handling.
+
+### 3. Add a handler in the worker
+
+Open `apps/worker/src/handlers/index.ts` and add a handler for your new job:
+
+```ts
+import type { JobHandlerMap } from "@repo/queue"
+
+export const handlers: JobHandlerMap = {
+  "email.send": async (payload, logger) => {
+    logger.info(`Sending email to="${payload.to}" subject="${payload.subject}"`)
+    // ... your email logic
+  },
+
+  "bulk.email.send": async (payload, logger) => {
+    logger.info(`Sending ${payload.length} emails`)
+    // ... your bulk email logic
+  },
+
+  // ↓ add new handlers here
+  "user.onboard": async (payload, logger) => {
+    logger.info(`Onboarding user ${payload.userId} on plan ${payload.plan}`)
+    // ... your onboarding logic
+  }
+}
+```
+
+> **Every job type in `JobPayloadMap` must have a matching handler.** TypeScript will
+> error if you miss one.
+
+### 4. Enqueue jobs from your app (API, controller, etc.)
+
+```ts
+import { QueueService } from "@repo/queue"
+import { RedisClient } from "@repo/redis"
+import { Logger } from "@repo/logger"
+
+// Create instances (typically done once at app startup)
+const logger = new Logger("AuthService")
+const redis = new RedisClient({
+  url: process.env.REDIS_URL!,
+  namespace: "auth"
+})
+const queue = new QueueService({ redis, logger })
+
+// Add a job — fully type-safe
+await queue.addJob("email.send", {
+  to: "user@example.com",
+  subject: "Welcome!",
+  body: "Thanks for signing up."
+})
+
+// Delayed job (runs after 1 minute)
+await queue.addJob(
+  "user.onboard",
+  { userId: "u_123", plan: "pro" },
+  { delay: 60_000 }
+)
+```
+
+### 5. Start the worker
+
+```bash
+cp apps/worker/.env.example apps/worker/.env
+pnpm --filter @repo/worker dev
+```
+
+The worker will pick up jobs and run your handlers.
+
+## Adding a new job type (summary)
+
+| Step | Where                               | What                                     |
+| ---- | ----------------------------------- | ---------------------------------------- |
+| 1    | `packages/queue/src/types.ts`       | Add entry to `JobPayloadMap`             |
+| 2    | `apps/worker/src/handlers/index.ts` | Add matching handler function            |
+| 3    | Your app                            | Call `queue.addJob("job-name", payload)` |
+
+## API
+
+### `QueueService`
+
+| Method                                            | Description                       |
+| ------------------------------------------------- | --------------------------------- |
+| `new QueueService({ redis, logger, queueName? })` | Create a queue producer           |
+| `addJob(name, payload, options?)`                 | Enqueue a job. Returns the job ID |
+| `close()`                                         | Gracefully close the connection   |
+
+**`addJob` options:**
+
+| Option  | Type     | Description                            |
+| ------- | -------- | -------------------------------------- |
+| `delay` | `number` | Milliseconds to wait before processing |
+
+### `WorkerService`
+
+| Method                                                                     | Description                   |
+| -------------------------------------------------------------------------- | ----------------------------- |
+| `new WorkerService({ redis, logger, handlers, queueName?, concurrency? })` | Start consuming jobs          |
+| `isRunning()`                                                              | Check if the worker is active |
+| `close()`                                                                  | Stop the worker gracefully    |
 
 ## Environment
 
-Set these in your service/app environment:
+Your worker app needs:
 
 ```env
 REDIS_URL=redis://localhost:6379
-REDIS_NAMESPACE=queue
-REDIS_QUEUE_DB=1
+QUEUE_NAME=default
+WORKER_CONCURRENCY=3
 ```
-
-- `REDIS_URL` is required.
-- `REDIS_NAMESPACE` should be set to `queue` for queue operations.
-- `REDIS_QUEUE_DB` isolates queue data (recommended).
-
-## Setup (overview)
-
-- Create a dedicated Redis client using your Redis wrapper with namespace `queue`.
-- Initialize `QueueService` once at app startup and reuse it for job enqueueing.
-- Start `WorkerService` in the worker process with a strict handler registry.
-- Keep queue traffic isolated using `REDIS_QUEUE_DB`.
-
-## Example (API bootstrap + enqueue)
-
-```ts
-import type { Logger } from "@repo/logger"
-import { JobType, QueueService, type IQueueService } from "@repo/queue"
-import type { RedisClient } from "@repo/redis"
-
-export function createQueueService(
-  redis: RedisClient,
-  logger: Logger,
-  options?: { queueName?: string; redisDbIndex?: number }
-): IQueueService {
-  return QueueService.create({
-    redis,
-    logger,
-    queueName: options?.queueName ?? "default",
-    redisDbIndex: options?.redisDbIndex
-  })
-}
-
-export async function exampleRouteHandler(queue: IQueueService): Promise<void> {
-  await queue.enqueue(JobType.EMAIL_SEND, {
-    to: "user@example.com",
-    subject: "Welcome!",
-    body: "<h1>Hello, welcome aboard!</h1>"
-  })
-
-  await queue.enqueue(
-    JobType.EMAIL_SEND,
-    {
-      to: "user@example.com",
-      subject: "How's it going?",
-      body: "<p>Just checking in...</p>"
-    },
-    { delay: 5 * 60 * 1000 }
-  )
-
-  await queue.enqueue(
-    JobType.PAYMENT_PROCESS,
-    {
-      userId: "usr_123",
-      amount: 4999,
-      currency: "USD",
-      idempotencyKey: "pay_abc123"
-    },
-    { priority: 1 }
-  )
-
-  await queue.enqueue(
-    JobType.USER_ONBOARD,
-    {
-      userId: "usr_123",
-      email: "user@example.com",
-      name: "Jane Doe"
-    },
-    { deduplicationId: "onboard:usr_123" }
-  )
-
-  await queue.enqueueBulk(JobType.EMAIL_SEND, [
-    {
-      payload: {
-        to: "alice@example.com",
-        subject: "Digest",
-        body: "<p>Your weekly digest</p>"
-      }
-    },
-    {
-      payload: {
-        to: "bob@example.com",
-        subject: "Digest",
-        body: "<p>Your weekly digest</p>"
-      }
-    }
-  ])
-}
-```
-
-## Adding Jobs and Workers
-
-- Define new job types in `JobPayloadMap` and `JobType` in `src/types.ts`.
-- Register new handlers in your worker setup.
-- Enqueue jobs from any app using the queue service.
-
-## Notes
-
-- Each worker and queue should use the dedicated `queue` namespace Redis client.
-- Use a dedicated Redis DB index for queues (recommended).
-- You can run multiple workers for different job types or scale horizontally.
-- Dead-letter and metrics support are available via the API.
-- DLQ entries are retained for 7 days by default (configurable in WorkerService).
 
 ## Validation
 
 ```bash
-pnpm --filter @repo/queue lint
 pnpm --filter @repo/queue check-types
+pnpm --filter @repo/queue lint
 ```
