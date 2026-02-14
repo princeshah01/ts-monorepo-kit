@@ -1,135 +1,204 @@
-# Turborepo starter
+# turbo-backend-starter
 
-This Turborepo starter is maintained by the Turborepo core team.
+Production-grade TypeScript monorepo for backend services, workers, and shared packages.
 
-## Using this example
+## Stack
 
-Run the following command:
+- **Runtime:** Node.js >= 18, TypeScript 5.9
+- **Monorepo:** Turborepo + pnpm workspaces
+- **Queue:** BullMQ (Redis-backed)
+- **Cache:** ioredis wrapper with namespace isolation
+- **Env:** Zod-validated via @t3-oss/env
+- **Lint:** ESLint v9 flat config (shared configs)
+- **Formatting:** Prettier
 
-```sh
-npx create-turbo@latest
-```
-
-## What's inside?
-
-This Turborepo includes the following packages/apps:
-
-### Apps and Packages
-
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
-
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
-
-### Utilities
-
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
+## Structure
 
 ```
-cd my-turborepo
+apps/
+  auth-service/     API service (placeholder — not yet implemented)
+  docs/             Next.js documentation site
+  worker/           Background job processor (BullMQ)
 
-# With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended)
-turbo build
-
-# Without [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation), use your package manager
-npx turbo build
-yarn dlx turbo build
-pnpm exec turbo build
+packages/
+  env/              Zod-based env validation (node, react, next)
+  eslint-config/    Shared ESLint configs (base, node, next, react)
+  logger/           Lightweight contextual logger
+  queue/            BullMQ queue + worker service
+  redis/            ioredis wrapper with caching, key builder, single-flight
+  typescript-config/ Shared tsconfig presets
+  ui/               React component library (Tailwind CSS)
 ```
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+## Quick start
 
-```
-# With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended)
-turbo build --filter=docs
+```bash
+# 1. Install dependencies
+pnpm install
 
-# Without [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation), use your package manager
-npx turbo build --filter=docs
-yarn exec turbo build --filter=docs
-pnpm exec turbo build --filter=docs
-```
+# 2. Copy environment files
+cp apps/worker/.env.example apps/worker/.env
+cp apps/auth-service/.env.example apps/auth-service/.env
 
-### Develop
+# 3. Start Redis (required for queue and cache)
+# Make sure Redis is running on localhost:6379
 
-To develop all apps and packages, run the following command:
+# 4. Run all apps/packages in dev mode
+pnpm dev
 
-```
-cd my-turborepo
-
-# With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended)
-turbo dev
-
-# Without [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation), use your package manager
-npx turbo dev
-yarn exec turbo dev
-pnpm exec turbo dev
+# 5. Or run a specific app
+pnpm --filter @repo/worker dev
+pnpm --filter docs dev
 ```
 
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+## Common commands
 
-```
-# With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended)
-turbo dev --filter=web
+| Command            | Description                         |
+| ------------------ | ----------------------------------- |
+| `pnpm dev`         | Run all apps + packages in dev mode |
+| `pnpm build`       | Build everything                    |
+| `pnpm lint`        | Lint everything                     |
+| `pnpm lint:fix`    | Auto-fix lint issues                |
+| `pnpm check-types` | Type-check everything               |
 
-# Without [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation), use your package manager
-npx turbo dev --filter=web
-yarn exec turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-```
+### Filter commands
 
-### Remote Caching
-
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-```
-cd my-turborepo
-
-# With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended)
-turbo login
-
-# Without [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation), use your package manager
-npx turbo login
-yarn exec turbo login
-pnpm exec turbo login
+```bash
+# Run a specific app/package
+pnpm --filter @repo/worker dev
+pnpm --filter @repo/redis check-types
+pnpm --filter docs dev
 ```
 
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
+## Environment variables
 
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
+Each app has a `.env.example` file. Copy and fill in:
 
-```
-# With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended)
-turbo link
-
-# Without [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation), use your package manager
-npx turbo link
-yarn exec turbo link
-pnpm exec turbo link
+```bash
+cp apps/worker/.env.example apps/worker/.env
+cp apps/auth-service/.env.example apps/auth-service/.env
 ```
 
-## Useful Links
+> See the [@repo/env README](packages/env/README.md) for how environment validation works and how to add new variables.
 
-Learn more about the power of Turborepo:
+---
 
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+## How to use the shared packages
+
+### Queue — enqueue background jobs from any app
+
+The queue package lets you define typed jobs and process them in the worker.
+
+**Quick version:**
+
+```ts
+import { QueueService } from "@repo/queue"
+
+const queue = new QueueService({ redis, logger })
+
+await queue.addJob("email.send", {
+  to: "user@example.com",
+  subject: "Welcome!",
+  body: "Thanks for signing up."
+})
+```
+
+The worker app picks up the job and runs the matching handler.
+
+> **Full guide:** [packages/queue/README.md](packages/queue/README.md) — covers defining job types, writing handlers, starting the worker, and the complete API.
+
+---
+
+### Redis — caching and data access from controllers
+
+The Redis package provides a cache-aside pattern for controllers:
+
+**Quick version:**
+
+```ts
+import { RedisClient } from "@repo/redis"
+
+const redis = new RedisClient({
+  url: process.env.REDIS_URL!,
+  namespace: "auth-service"
+})
+
+// Cache-aside: tries cache first, fetches on miss
+const user = await redis.getOrSet(
+  redis.keyBuilder.cacheKeyById("users", userId),
+  {
+    ttl: 300,
+    fetcher: async () => db.user.findUnique({ where: { id: userId } })
+  }
+)
+
+// Invalidate after mutation
+const keys = redis.keyBuilder.invalidateById("users", userId)
+await redis.invalidate(keys.exact)
+await redis.invalidateByPattern(keys.listPattern)
+```
+
+> **Full guide:** [packages/redis/README.md](packages/redis/README.md) — covers setup, controller usage, key building, invalidation patterns, and health checks.
+
+---
+
+### Env — type-safe environment variables
+
+Define and validate env variables with Zod:
+
+```ts
+import { createNodeEnv } from "@repo/env/node"
+import { url, port, nodeEnv } from "@repo/env/schema"
+
+export const env = createNodeEnv({
+  NODE_ENV: nodeEnv,
+  REDIS_URL: url,
+  PORT: port.default(4000)
+})
+```
+
+> **Full guide:** [packages/env/README.md](packages/env/README.md) — covers Node.js, React/Vite, and Next.js usage, plus all available schemas.
+
+---
+
+### ESLint — shared lint configs
+
+Use pre-built configs in your `eslint.config.mjs`:
+
+```js
+// Node.js app
+import { nodeConfig } from "@repo/eslint-config/node"
+export default [...nodeConfig]
+
+// Next.js app
+import { nextJsConfig } from "@repo/eslint-config/next-js"
+export default [...nextJsConfig]
+
+// React app
+import { reactConfig } from "@repo/eslint-config/react"
+export default [...reactConfig]
+```
+
+> **Full guide:** [packages/eslint-config/README.md](packages/eslint-config/README.md) — covers all available configs, included rules, and how to extend.
+
+---
+
+## Package reference
+
+| Package                   | Description                   | README                                     |
+| ------------------------- | ----------------------------- | ------------------------------------------ |
+| `@repo/queue`             | BullMQ queue + worker service | [README](packages/queue/README.md)         |
+| `@repo/redis`             | ioredis wrapper with caching  | [README](packages/redis/README.md)         |
+| `@repo/env`               | Zod-validated env variables   | [README](packages/env/README.md)           |
+| `@repo/eslint-config`     | Shared ESLint configs         | [README](packages/eslint-config/README.md) |
+| `@repo/logger`            | Contextual console logger     | [README](packages/logger/README.md)        |
+| `@repo/typescript-config` | Shared tsconfig presets       | —                                          |
+| `@repo/ui`                | React component library       | —                                          |
+
+## Apps
+
+| App            | Description                | README                                |
+| -------------- | -------------------------- | ------------------------------------- |
+| `worker`       | Background job processor   | [README](apps/worker/README.md)       |
+| `docs`         | Next.js documentation site | [README](apps/docs/README.md)         |
+| `auth-service` | REST API (placeholder)     | [README](apps/auth-service/README.md) |

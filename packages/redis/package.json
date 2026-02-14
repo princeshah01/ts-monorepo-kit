@@ -1,16 +1,15 @@
 {
-  "name": "@repo/env",
+  "name": "@repo/redis",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "exports": {
-    "./node": "./src/node.ts",
-    "./react": "./src/react.ts",
-    "./next": "./src/next.ts",
-    "./schema": "./src/schema/index.ts"
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
   },
   "scripts": {
-    "build": "tsc",
     "lint": "eslint .",
     "lint:fix": "eslint --fix .",
     "check-types": "tsc --noEmit"
@@ -18,12 +17,12 @@
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",
+    "@types/express": "^5.0.6",
     "@types/node": "^22.15.3",
-    "typescript": "^5.9.3"
+    "typescript": "5.9.2"
   },
   "dependencies": {
-    "@t3-oss/env-core": "^0.13.10",
-    "@t3-oss/env-nextjs": "^0.13.10",
-    "zod": "^4.3.6"
+    "@repo/logger": "workspace:*",
+    "ioredis": "^5.9.2"
   }
 }
