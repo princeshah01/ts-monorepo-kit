@@ -1,0 +1,21 @@
+# dependencies
+node_modules
+**/node_modules
+.pnpm-store
+
+# turborepo
+.turbo
+
+# build outputs
+.next
+dist
+build
+
+# misc
+.git
+.gitignore
+.env
+
+# docker
+Dockerfile*
+docker-compose*

@@ -1,0 +1,101 @@
+name: turbo-starter
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: turbo-postgres
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: turbo-redis
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    command: >
+      sh -c 'redis-server --appendonly yes --requirepass "$REDIS_PASSWORD"'
+    ports:
+      - "${REDIS_PORT}:6379"
+    healthcheck:
+      test: ["CMD-SHELL", 'redis-cli -a "$REDIS_PASSWORD" ping | grep PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - redis-data:/data
+
+  worker:
+    build: .
+    container_name: turbo-worker
+    working_dir: /app
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      REDIS_URL: ${REDIS_URL}
+      QUEUE_NAME: ${QUEUE_NAME}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY}
+      CHOKIDAR_USEPOLLING: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: pnpm --filter @repo/worker dev
+
+  docs:
+    build: .
+    container_name: turbo-docs
+    working_dir: /app
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      DATABASE_URL: ${DATABASE_URL}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+      CHOKIDAR_USEPOLLING: "true"
+      WATCHPACK_POLLING: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT}:3000"
+    command: pnpm --filter @repo/web dev
+
+  redis-commander:
+    image: rediscommander/redis-commander
+    container_name: turbo-redis-ui
+    env_file:
+      - ./.env
+    ports:
+      - "${REDISCOMMANDER_PORT}:8081"
+    environment:
+      REDIS_HOSTS: turbo-redis:${REDIS_HOST}:${REDIS_PORT}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  redis-data:
+  redisinsight-data:
