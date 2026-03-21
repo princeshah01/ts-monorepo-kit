@@ -95,6 +95,53 @@ services:
       redis:
         condition: service_healthy
 
+  auth-service:
+    build: .
+    container_name: turbo-auth-service
+    working_dir: /app
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      SESSION_SECRET: ${SESSION_SECRET}
+      CHOKIDAR_USEPOLLING: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "${AUTH_PORT}:4000"
+    command: pnpm --filter @repo/auth-service dev
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:4000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  admin-dashboard:
+    build: .
+    container_name: turbo-admin-dashboard
+    working_dir: /app
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      CHOKIDAR_USEPOLLING: "true"
+      WATCHPACK_POLLING: "true"
+    depends_on:
+      auth-service:
+        condition: service_healthy
+    ports:
+      - "${ADMIN_PORT}:5174"
+    command: pnpm --filter @repo/admin-dashboard dev
+
 volumes:
   postgres-data:
   redis-data:
