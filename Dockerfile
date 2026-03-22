@@ -11,6 +11,13 @@ WORKDIR /app
 
 COPY . .
 
+# Use hoisted node-linker in Docker so all deps go to root node_modules.
+# This avoids symlink issues when host bind mount has Windows junctions.
+RUN echo "node-linker=hoisted" > ~/.npmrc
 RUN pnpm install
 
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["pnpm", "dev"]
