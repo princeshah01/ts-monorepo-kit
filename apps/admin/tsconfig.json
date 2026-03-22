@@ -1,8 +1,9 @@
 {
   "extends": "@repo/typescript-config/react.json",
   "compilerOptions": {
-    "rootDir": "./src",
-    "outDir": "./dist"
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true
   },
   "include": ["src", "vite-env.d.ts"],
   "exclude": ["node_modules", "dist"]

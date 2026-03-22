@@ -7,10 +7,6 @@ services:
     restart: unless-stopped
     env_file:
       - ./.env
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "${POSTGRES_PORT}:5432"
     healthcheck:
@@ -46,39 +42,28 @@ services:
     restart: unless-stopped
     env_file:
       - ./.env
-    environment:
-      NODE_ENV: ${NODE_ENV}
-      REDIS_URL: ${REDIS_URL}
-      QUEUE_NAME: ${QUEUE_NAME}
-      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY}
-      CHOKIDAR_USEPOLLING: "true"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      - .:/app
+      - /app/node_modules
     command: pnpm --filter @repo/worker dev
 
-  docs:
+  web:
     build: .
-    container_name: turbo-docs
+    container_name: turbo-web
     working_dir: /app
     restart: unless-stopped
     env_file:
       - ./.env
-    environment:
-      NODE_ENV: ${NODE_ENV}
-      DATABASE_URL: ${DATABASE_URL}
-      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
-      CHOKIDAR_USEPOLLING: "true"
-      WATCHPACK_POLLING: "true"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
     ports:
       - "${WEB_PORT}:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
     command: pnpm --filter @repo/web dev
 
   redis-commander:
@@ -89,8 +74,7 @@ services:
     ports:
       - "${REDISCOMMANDER_PORT}:8081"
     environment:
-      REDIS_HOSTS: turbo-redis:${REDIS_HOST}:${REDIS_PORT}
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_HOSTS: local:${REDIS_HOST}:${REDIS_PORT}
     depends_on:
       redis:
         condition: service_healthy
@@ -102,14 +86,6 @@ services:
     restart: unless-stopped
     env_file:
       - ./.env
-    environment:
-      NODE_ENV: ${NODE_ENV}
-      DATABASE_URL: ${DATABASE_URL}
-      REDIS_URL: ${REDIS_URL}
-      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
-      SESSION_SECRET: ${SESSION_SECRET}
-      CHOKIDAR_USEPOLLING: "true"
     depends_on:
       postgres:
         condition: service_healthy
@@ -117,12 +93,16 @@ services:
         condition: service_healthy
     ports:
       - "${AUTH_PORT}:4000"
+    volumes:
+      - .:/app
+      - /app/node_modules
     command: pnpm --filter @repo/auth-service dev
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:4000/health || exit 1"]
-      interval: 10s
-      timeout: 5s
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
       retries: 5
+      start_period: 30s
 
   admin-dashboard:
     build: .
@@ -131,18 +111,16 @@ services:
     restart: unless-stopped
     env_file:
       - ./.env
-    environment:
-      NODE_ENV: ${NODE_ENV}
-      CHOKIDAR_USEPOLLING: "true"
-      WATCHPACK_POLLING: "true"
+    ports:
+      - "${ADMIN_PORT}:5174"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: pnpm --filter @repo/admin dev
     depends_on:
       auth-service:
         condition: service_healthy
-    ports:
-      - "${ADMIN_PORT}:5174"
-    command: pnpm --filter @repo/admin-dashboard dev
 
 volumes:
   postgres-data:
   redis-data:
-  redisinsight-data:
