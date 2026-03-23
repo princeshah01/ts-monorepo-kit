@@ -35,37 +35,6 @@ services:
     volumes:
       - redis-data:/data
 
-  worker:
-    build: .
-    container_name: turbo-worker
-    working_dir: /app
-    restart: unless-stopped
-    env_file:
-      - ./.env
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - .:/app
-      - /app/node_modules
-    command: pnpm --filter @repo/worker dev
-
-  web:
-    build: .
-    container_name: turbo-web
-    working_dir: /app
-    restart: unless-stopped
-    env_file:
-      - ./.env
-    ports:
-      - "${WEB_PORT}:3000"
-    volumes:
-      - .:/app
-      - /app/node_modules
-    command: pnpm --filter @repo/web dev
-
   redis-commander:
     image: rediscommander/redis-commander
     container_name: turbo-redis-ui
@@ -77,48 +46,6 @@ services:
       REDIS_HOSTS: local:${REDIS_HOST}:${REDIS_PORT}
     depends_on:
       redis:
-        condition: service_healthy
-
-  auth-service:
-    build: .
-    container_name: turbo-auth-service
-    working_dir: /app
-    restart: unless-stopped
-    env_file:
-      - ./.env
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    ports:
-      - "${AUTH_PORT}:4000"
-    volumes:
-      - .:/app
-      - /app/node_modules
-    command: pnpm --filter @repo/auth-service dev
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:4000/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-
-  admin-dashboard:
-    build: .
-    container_name: turbo-admin-dashboard
-    working_dir: /app
-    restart: unless-stopped
-    env_file:
-      - ./.env
-    ports:
-      - "${ADMIN_PORT}:5174"
-    volumes:
-      - .:/app
-      - /app/node_modules
-    command: pnpm --filter @repo/admin dev
-    depends_on:
-      auth-service:
         condition: service_healthy
 
 volumes:

@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev",
+    "dev": "env-cmd -f .env turbo run dev",
     "lint": "turbo run lint",
     "lint:fix": "turbo run lint:fix",
     "check-types": "turbo run check-types"
@@ -22,5 +22,8 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "env-cmd": "^11.0.0"
   }
 }
