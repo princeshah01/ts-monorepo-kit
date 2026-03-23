@@ -27,6 +27,11 @@
     "dev": {
       "cache": false,
       "persistent": true
+    },
+    "db:migrate": {
+      "cache": false,
+      "persistent": true,
+      "env": ["DATABASE_URL"]
     }
   }
 }
