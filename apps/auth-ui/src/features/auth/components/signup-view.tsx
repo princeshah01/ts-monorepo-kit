@@ -1,14 +1,13 @@
+import { Button } from "@repo/ui/components/button"
 import { useNavigate } from "react-router-dom"
 
-import { Button } from "@repo/ui/components/button"
-
-import { useSignupFlow } from "../hooks/use-signup-flow"
 import { ActionRow } from "./action-row"
 import { AuthShell } from "./auth-shell"
-import { SignupStepFour } from "./signup-step-four"
+import { OtpVerificationStep } from "./otp-verification-step"
+import { PasswordSetupStep } from "./password-setup-step"
 import { SignupStepOne } from "./signup-step-one"
-import { SignupStepThree } from "./signup-step-three"
 import { SignupStepTwo } from "./signup-step-two"
+import { useSignupFlow } from "../hooks/use-signup-flow"
 
 export function SignupView() {
   const navigate = useNavigate()
@@ -36,7 +35,7 @@ export function SignupView() {
               onChange={flow.update}
             />
           ) : flow.step === 3 ? (
-            <SignupStepThree
+            <OtpVerificationStep
               email={flow.values.email}
               otp={flow.values.otp}
               otpError={flow.errors.otp}
@@ -44,10 +43,15 @@ export function SignupView() {
               onResend={() => undefined}
             />
           ) : (
-            <SignupStepFour
-              values={flow.values}
-              errors={flow.errors}
-              onChange={flow.update}
+            <PasswordSetupStep
+              passwordValue={flow.values.password}
+              onPasswordChange={value => flow.update("password", value)}
+              passwordError={flow.errors.password}
+              confirmPasswordValue={flow.values.confirmPassword}
+              onConfirmPasswordChange={value =>
+                flow.update("confirmPassword", value)
+              }
+              confirmPasswordError={flow.errors.confirmPassword}
             />
           )}
         </div>

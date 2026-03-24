@@ -1,6 +1,3 @@
-import type { ReactNode } from "react"
-import { Link } from "react-router-dom"
-
 import {
   Card,
   CardContent,
@@ -8,6 +5,9 @@ import {
   CardHeader,
   CardTitle
 } from "@repo/ui/components/card"
+import type { ReactNode } from "react"
+import { Link } from "react-router-dom"
+
 
 interface AuthLayoutProps {
   title: string

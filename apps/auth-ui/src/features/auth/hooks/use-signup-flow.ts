@@ -42,11 +42,11 @@ export function useSignupFlow() {
 
   const left = useMemo(() => {
     if (step === 1)
-      return ["Create account", "Enter your basic information to get started."]
+      {return ["Create account", "Enter your basic information to get started."]}
     if (step === 2)
-      return ["Additional information", "Add date of birth and gender."]
+      {return ["Additional information", "Add date of birth and gender."]}
     if (step === 3)
-      return ["Email verification", "Confirm your email with OTP."]
+      {return ["Email verification", "Confirm your email with OTP."]}
     return ["Set password", "Create a strong password to protect your account."]
   }, [step])
 
@@ -73,7 +73,7 @@ export function useSignupFlow() {
       for (const [key, value] of Object.entries(
         result.error.flatten().fieldErrors
       )) {
-        if (value?.[0]) next[key] = value[0]
+        if (value?.[0]) {next[key] = value[0]}
       }
       setErrors(next)
       return false

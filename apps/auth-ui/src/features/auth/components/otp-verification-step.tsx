@@ -1,7 +1,7 @@
 import { InputWrapper } from "./form-field"
 import { OtpSection } from "./otp-section"
 
-interface SignupStepThreeProps {
+interface OtpVerificationStepProps {
   email: string
   otp: string
   otpError?: string
@@ -9,15 +9,19 @@ interface SignupStepThreeProps {
   onResend: () => void
 }
 
-export function SignupStepThree({
+export function OtpVerificationStep({
   email,
   otp,
   otpError,
   onOtpChange,
   onResend
-}: SignupStepThreeProps) {
+}: OtpVerificationStepProps) {
   return (
-    <InputWrapper label="Verification code" htmlFor="signup-otp" error={otpError}>
+    <InputWrapper
+      label="Verification code"
+      htmlFor="verification-otp"
+      error={otpError}
+    >
       {field => (
         <OtpSection
           email={email}

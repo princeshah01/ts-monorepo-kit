@@ -3,52 +3,82 @@ import { useNavigate } from "react-router-dom"
 
 import { ActionRow } from "./action-row"
 import { AuthShell } from "./auth-shell"
-import { InputWrapper } from "./form-field"
-import { PasswordInput } from "./password-input"
+import { ForgotPasswordSuccessView } from "./forgot-password-success-view"
+import { LoginStepEmail } from "./login-step-email"
+import { LoginStepPassword } from "./login-step-password"
+import { OtpVerificationStep } from "./otp-verification-step"
+import { PasswordSetupStep } from "./password-setup-step"
 import { useLoginFlow } from "../hooks/use-login-flow"
 
 export function LoginView() {
   const navigate = useNavigate()
   const flow = useLoginFlow()
 
+  if (flow.step === "forgot-password-success") {
+    return (
+      <ForgotPasswordSuccessView
+        topError={flow.topError}
+        isLoading={flow.isLoading}
+        onContinue={() => {
+          flow.setStep("password")
+          flow.setPasswordValue("")
+        }}
+      />
+    )
+  }
+
   return (
     <AuthShell
-      title="Sign in"
-      description="Sign in with your account to continue securely."
+      title={
+        flow.step === "forgot-password-otp"
+          ? "Enter Code"
+          : flow.step === "forgot-password-new"
+            ? "New Password"
+            : "Sign in"
+      }
+      description={
+        flow.step === "forgot-password-otp"
+          ? `We sent a code to ${flow.email}`
+          : flow.step === "forgot-password-new"
+            ? "Create a new password for your account."
+            : "Sign in with your account to continue securely."
+      }
       topError={flow.topError}
       isLoading={flow.isLoading}
     >
       <div className="flex min-h-full flex-col justify-between gap-10">
         <div className="grid gap-6 pt-8 md:pt-14">
           {flow.step === "email" ? (
-            <InputWrapper
-              label="Email"
-              htmlFor="login-email"
-              type="email"
-              value={flow.email}
+            <LoginStepEmail
+              email={flow.email}
               onChange={flow.setEmailValue}
-              placeholder="Email or phone"
               error={flow.errors.email}
             />
-          ) : (
-            <InputWrapper
-              label="Password"
-              htmlFor="login-password"
+          ) : flow.step === "password" ? (
+            <LoginStepPassword
+              password={flow.password}
+              onChange={flow.setPasswordValue}
               error={flow.errors.password}
-            >
-              {field => (
-                <PasswordInput
-                  id={field.id}
-                  value={flow.password}
-                  onChange={flow.setPasswordValue}
-                  placeholder="Enter password"
-                  ariaLabel="Toggle password visibility"
-                  ariaDescribedBy={field.describedBy}
-                  hasError={field.hasError}
-                />
-              )}
-            </InputWrapper>
-          )}
+              onForgotPassword={flow.requestPasswordResetOtp}
+            />
+          ) : flow.step === "forgot-password-otp" ? (
+            <OtpVerificationStep
+              email={flow.email}
+              otp={flow.otp}
+              otpError={flow.errors.otp}
+              onOtpChange={flow.setOtpValue}
+              onResend={flow.requestPasswordResetOtp}
+            />
+          ) : flow.step === "forgot-password-new" ? (
+            <PasswordSetupStep
+              passwordValue={flow.newPassword}
+              onPasswordChange={flow.setNewPasswordValue}
+              passwordError={flow.errors.newPassword}
+              confirmPasswordValue={flow.confirmNewPassword}
+              onConfirmPasswordChange={flow.setConfirmNewPasswordValue}
+              confirmPasswordError={flow.errors.confirmNewPassword}
+            />
+          ) : null}
         </div>
         <ActionRow
           left={
@@ -59,6 +89,15 @@ export function LoginView() {
                 onClick={() => navigate("/register")}
               >
                 Create account
+              </Button>
+            ) : flow.step === "forgot-password-otp" ||
+              flow.step === "forgot-password-new" ? (
+              <Button
+                variant="ghost"
+                className="h-11 rounded-full px-6 text-slate-700 hover:bg-slate-100"
+                onClick={() => flow.setStep("password")}
+              >
+                Cancel
               </Button>
             ) : (
               <Button
@@ -76,15 +115,25 @@ export function LoginView() {
               onClick={async () => {
                 if (flow.step === "email") {
                   await flow.continueWithEmail()
-                  return
-                }
-                const result = await flow.login()
-                if (result.unauthorized) {
-                  navigate("/unauthorized")
+                } else if (flow.step === "password") {
+                  const result = await flow.login()
+                  if (result.unauthorized) {
+                    navigate("/unauthorized")
+                  }
+                } else if (flow.step === "forgot-password-otp") {
+                  await flow.verifyOtpAndContinue()
+                } else if (flow.step === "forgot-password-new") {
+                  await flow.resetPassword()
                 }
               }}
             >
-              {flow.step === "email" ? "Continue" : "Login"}
+              {flow.step === "email"
+                ? "Continue"
+                : flow.step === "forgot-password-otp"
+                  ? "Verify"
+                  : flow.step === "forgot-password-new"
+                    ? "Reset Password"
+                    : "Login"}
             </Button>
           }
         />
