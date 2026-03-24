@@ -1,14 +1,13 @@
-import type { ReactNode } from "react"
-
 import { Input } from "@repo/ui/components/input"
+import type { ReactNode } from "react"
 
 interface FieldChildProps {
   id: string
-  value: string
-  onChange: (value: string) => void
+  describedBy?: string
+  hasError: boolean
 }
 
-interface FormFieldProps {
+interface InputWrapperProps {
   label: string
   htmlFor?: string
   value?: string
@@ -19,7 +18,7 @@ interface FormFieldProps {
   children?: ReactNode | ((props: FieldChildProps) => ReactNode)
 }
 
-export function FormField({
+export function InputWrapper({
   label,
   htmlFor,
   value,
@@ -28,31 +27,41 @@ export function FormField({
   placeholder,
   error,
   children
-}: FormFieldProps) {
+}: InputWrapperProps) {
   const fieldId = htmlFor ?? label.toLowerCase().replace(/\s+/g, "-")
+  const errorId = error ? `${fieldId}-error` : undefined
   const renderProps: FieldChildProps = {
     id: fieldId,
-    value: value ?? "",
-    onChange: onChange ?? (() => undefined)
+    describedBy: errorId,
+    hasError: Boolean(error)
   }
 
   return (
-    <div className="grid gap-1">
-      <label htmlFor={fieldId} className="text-xs font-medium text-slate-600">
+    <div className="grid gap-2">
+      <label
+        htmlFor={fieldId}
+        className="text-sm font-medium tracking-tight text-slate-700"
+      >
         {label}
       </label>
       {typeof children === "function" ? children(renderProps) : children}
       {!children ? (
         <Input
-          id={renderProps.id}
+          id={fieldId}
           type={type}
-          value={renderProps.value}
-          onChange={event => renderProps.onChange(event.target.value)}
+          value={value ?? ""}
+          onChange={event => (onChange ?? (() => undefined))(event.target.value)}
           placeholder={placeholder}
-          className="h-11"
+          aria-invalid={Boolean(error)}
+          aria-describedby={errorId}
+          className="h-12 rounded-xl border-slate-200 bg-white px-4 shadow-none placeholder:text-slate-400"
         />
       ) : null}
-      {error ? <p className="text-xs text-rose-600">{error}</p> : null}
+      {error ? (
+        <p id={errorId} className="text-xs font-medium text-rose-600">
+          {error}
+        </p>
+      ) : null}
     </div>
   )
 }

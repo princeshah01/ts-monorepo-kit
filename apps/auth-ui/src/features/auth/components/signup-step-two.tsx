@@ -1,4 +1,4 @@
-import { FormField } from "./form-field"
+import { InputWrapper } from "./form-field"
 import { GenderDropdown } from "./gender-dropdown"
 import { SignupDatePicker } from "./signup-date-picker"
 
@@ -20,22 +20,26 @@ export function SignupStepTwo({
 }: SignupStepTwoProps) {
   return (
     <div className="grid gap-3">
-      <FormField label="Date of birth" htmlFor="signup-dob" error={errors.dob}>
-        <div id="signup-dob">
+      <InputWrapper label="Date of birth" htmlFor="signup-dob" error={errors.dob}>
+        {field => (
           <SignupDatePicker
             value={values.dob}
             onChange={value => onChange("dob", value)}
+            hasError={field.hasError}
+            describedBy={field.describedBy}
           />
-        </div>
-      </FormField>
-      <FormField label="Gender" htmlFor="signup-gender" error={errors.gender}>
-        <div id="signup-gender">
+        )}
+      </InputWrapper>
+      <InputWrapper label="Gender" htmlFor="signup-gender" error={errors.gender}>
+        {field => (
           <GenderDropdown
             value={values.gender}
             onChange={value => onChange("gender", value)}
+            hasError={field.hasError}
+            describedBy={field.describedBy}
           />
-        </div>
-      </FormField>
+        )}
+      </InputWrapper>
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { FormField } from "./form-field"
+import { InputWrapper } from "./form-field"
 import { OtpSection } from "./otp-section"
 
 interface SignupStepThreeProps {
@@ -17,13 +17,17 @@ export function SignupStepThree({
   onResend
 }: SignupStepThreeProps) {
   return (
-    <FormField label="Verification code" htmlFor="signup-otp" error={otpError}>
-      <OtpSection
-        email={email}
-        otp={otp}
-        onOtpChange={onOtpChange}
-        onResend={onResend}
-      />
-    </FormField>
+    <InputWrapper label="Verification code" htmlFor="signup-otp" error={otpError}>
+      {field => (
+        <OtpSection
+          email={email}
+          otp={otp}
+          onOtpChange={onOtpChange}
+          onResend={onResend}
+          describedBy={field.describedBy}
+          hasError={field.hasError}
+        />
+      )}
+    </InputWrapper>
   )
 }

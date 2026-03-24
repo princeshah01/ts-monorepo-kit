@@ -1,5 +1,6 @@
-import { FormField } from "./form-field"
+import { InputWrapper } from "./form-field"
 import { PasswordInput } from "./password-input"
+import { PasswordRequirements } from "./password-requirements"
 
 interface StepFourValues {
   password: string
@@ -19,7 +20,7 @@ export function SignupStepFour({
 }: SignupStepFourProps) {
   return (
     <div className="grid gap-3">
-      <FormField
+      <InputWrapper
         label="Password"
         htmlFor="signup-password"
         value={values.password}
@@ -29,14 +30,17 @@ export function SignupStepFour({
         {field => (
           <PasswordInput
             id={field.id}
-            value={field.value}
-            onChange={field.onChange}
+            value={values.password}
+            onChange={value => onChange("password", value)}
             placeholder="Create password"
             ariaLabel="Toggle password visibility"
+            ariaDescribedBy={field.describedBy}
+            hasError={field.hasError}
           />
         )}
-      </FormField>
-      <FormField
+      </InputWrapper>
+      <PasswordRequirements password={values.password} />
+      <InputWrapper
         label="Confirm password"
         htmlFor="signup-confirm-password"
         value={values.confirmPassword}
@@ -46,13 +50,15 @@ export function SignupStepFour({
         {field => (
           <PasswordInput
             id={field.id}
-            value={field.value}
-            onChange={field.onChange}
+            value={values.confirmPassword}
+            onChange={value => onChange("confirmPassword", value)}
             placeholder="Confirm password"
             ariaLabel="Toggle confirm password visibility"
+            ariaDescribedBy={field.describedBy}
+            hasError={field.hasError}
           />
         )}
-      </FormField>
+      </InputWrapper>
     </div>
   )
 }

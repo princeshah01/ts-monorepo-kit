@@ -21,40 +21,41 @@ export function SignupView() {
       topError={flow.topError}
       isLoading={flow.isLoading}
     >
-      <div className="grid h-full gap-4">
-        {flow.step === 1 ? (
-          <SignupStepOne
-            values={flow.values}
-            errors={flow.errors}
-            onChange={flow.update}
-          />
-        ) : flow.step === 2 ? (
-          <SignupStepTwo
-            values={flow.values}
-            errors={flow.errors}
-            onChange={flow.update}
-          />
-        ) : flow.step === 3 ? (
-          <SignupStepThree
-            email={flow.values.email}
-            otp={flow.values.otp}
-            otpError={flow.errors.otp}
-            onOtpChange={value => flow.update("otp", value)}
-            onResend={() => undefined}
-          />
-        ) : (
-          <SignupStepFour
-            values={flow.values}
-            errors={flow.errors}
-            onChange={flow.update}
-          />
-        )}
-
+      <div className="flex min-h-full flex-col justify-between gap-10">
+        <div className="grid gap-6 pt-8 md:pt-14">
+          {flow.step === 1 ? (
+            <SignupStepOne
+              values={flow.values}
+              errors={flow.errors}
+              onChange={flow.update}
+            />
+          ) : flow.step === 2 ? (
+            <SignupStepTwo
+              values={flow.values}
+              errors={flow.errors}
+              onChange={flow.update}
+            />
+          ) : flow.step === 3 ? (
+            <SignupStepThree
+              email={flow.values.email}
+              otp={flow.values.otp}
+              otpError={flow.errors.otp}
+              onOtpChange={value => flow.update("otp", value)}
+              onResend={() => undefined}
+            />
+          ) : (
+            <SignupStepFour
+              values={flow.values}
+              errors={flow.errors}
+              onChange={flow.update}
+            />
+          )}
+        </div>
         <ActionRow
           left={
             <Button
               variant="ghost"
-              className="h-11 rounded-full px-6"
+              className="h-11 rounded-full px-6 text-slate-700 hover:bg-slate-100"
               onClick={() =>
                 flow.step === 1
                   ? navigate("/login")
@@ -66,7 +67,7 @@ export function SignupView() {
           }
           right={
             <Button
-              className="h-11 rounded-full px-6"
+              className="h-11 rounded-full px-8"
               onClick={async () => {
                 const done = await flow.nextStep()
                 if (done) {
