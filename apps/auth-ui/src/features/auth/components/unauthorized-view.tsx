@@ -1,7 +1,6 @@
 import { Button } from "@repo/ui/components/button"
 import { useNavigate } from "react-router-dom"
 
-
 import { ActionRow } from "./action-row"
 import { AuthShell } from "./auth-shell"
 
@@ -13,12 +12,16 @@ export function UnauthorizedView() {
       title="Unauthorized access"
       description="You are not authorized. You do not have permission to access this."
     >
-      <div className="grid h-full gap-4">
-        <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
-          <h2 className="text-lg font-semibold text-rose-700">Access denied</h2>
-          <p className="mt-2 text-sm text-rose-600">
-            You do not have permission to access this resource.
-          </p>
+      <div className="flex min-h-full flex-col justify-between gap-10">
+        <div className="grid gap-6 pt-8 md:pt-14">
+          <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
+            <h2 className="text-lg font-semibold text-rose-700">
+              Access denied
+            </h2>
+            <p className="mt-2 text-sm text-rose-600">
+              You do not have permission to access this resource.
+            </p>
+          </div>
         </div>
 
         <ActionRow
